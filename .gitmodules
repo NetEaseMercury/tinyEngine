@@ -1,0 +1,9 @@
+[submodule "thirdParty/glfw"]
+	path = thirdParty/glfw
+	url = https://github.com/glfw/glfw.git
+[submodule "thirdParty/glm"]
+	path = thirdParty/glm
+	url = https://github.com/g-truc/glm.git
+[submodule "thirdParty/tinyobjloader"]
+	path = thirdParty/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader.git
