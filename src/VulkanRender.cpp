@@ -84,56 +84,8 @@ void VulkanRender::gameLoop()
 		}
 		drawFrame();
 		camera.UpdataCameraPosition();
-		DrawIMGUI();
+		imGUI->startNewFrame();
 	}
-}
-
-void VulkanRender::DrawIMGUI()
-{
-	// 获取窗口尺寸
-	int width, height;
-	glfwGetFramebufferSize(window, &width, &height); // 获取窗口尺寸
-	ImGui::GetIO().DisplaySize = ImVec2(static_cast<float>(width), static_cast<float>(height));
-
-	// 开始新的 ImGui 帧
-	ImGui::NewFrame();
-
-	// 创建按钮
-	if (ImGui::Button("点击我")) {
-		// 按钮被点击时的处理
-	}
-
-	// 下拉框
-	const char* items[] = { "cyberRoom", "fantasyGame", "vikingRoom" };
-	static int current_item = 0;
-	static int last_item = -1;
-
-	ImGui::Combo("ModelChoose", &current_item, items, IM_ARRAYSIZE(items));
-	if (current_item != last_item) {
-		last_item = current_item;
-		switch (current_item) {
-		case 0:
-			// 处理 cyberRoom 选择
-			break;
-		case 1:
-			// 处理 fantasyGame 选择
-			break;
-		case 2:
-			// 处理 vikingRoom 选择
-			break;
-		}
-	}
-
-	// 渲染 ImGui UI
-	ImGui::Render();
-	auto draw_data = ImGui::GetDrawData();
-	//if (draw_data) {
-	//	// 检查 draw_data 的有效性
-	//	ImGui_ImplVulkan_RenderDrawData(draw_data, commandBuffers[currentFrame]);
-	//}
-	//else {
-	//	std::cerr << "Draw data is null!" << std::endl;
-	//}
 }
 
 void VulkanRender::initGLFW()
@@ -146,31 +98,15 @@ void VulkanRender::initGLFW()
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 	glfwSetCursorPosCallback(window, mouseCallback);
 	glfwSetMouseButtonCallback(window, mouseButtonCallback);
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
 void VulkanRender::initIMGUI()
 {
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGui_ImplGlfw_InitForVulkan(window, true);
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-
-	// Add a default font
-	io.Fonts->AddFontDefault(); // 可替换为其它字体
-	// 字体图集构建
-	io.Fonts->Build();
-	guiInfo.Instance = instance_;
-	guiInfo.PhysicalDevice = physicalDevice;
-	guiInfo.Device = device;
-	guiInfo.Queue = graphicsQueue;
-	guiInfo.RenderPass = renderPass;
-	guiInfo.DescriptorPool = descriptorPool; // 必须创建并设置 descriptorPool
-	guiInfo.MinImageCount = 2; // 保证的最少图像数量
-	guiInfo.ImageCount = 2; // 渲染可用的图像数量
-	guiInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT; // 多重采样
-	guiInfo.Allocator = nullptr; // 使用默认分配器
-	ImGui_ImplVulkan_Init(&guiInfo);
+	imGUI = new UIManager();
+	imGUI->setVulkanInstance(instance_, NULL);
+	imGUI->setPhysicalDevice(device, physicalDevice);
+	imGUI->initIMGUI();
 }
 
 void VulkanRender::initVulkan()
@@ -209,11 +145,11 @@ void VulkanRender::initVulkan()
 void VulkanRender::cleanUp()
 {
 	// 清理
-	ImGui_ImplVulkan_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
-	cleanupVulkanSwapChain();
-
+	//ImGui_ImplVulkan_Shutdown();
+	//ImGui_ImplGlfw_Shutdown();
+	//ImGui::DestroyContext();
+	//cleanupVulkanSwapChain();
+	imGUI->cleanUp();
 	vkDestroySampler(device, textureSampler, nullptr);
 	vkDestroyImageView(device, textureImageView, nullptr);
 
@@ -317,6 +253,7 @@ void VulkanRender::setLogicalDevice()
 			indices.graphicsFamily.value(),
 			indices.presentFamily.value()
 	};
+
 
 	float queuePriority = 1.0f;
 	for (uint32_t queueFamily : uniqueQueueFamilies) {

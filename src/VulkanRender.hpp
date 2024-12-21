@@ -7,8 +7,9 @@
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <backends/imgui_impl_glfw.h>
-#define WIDTH 2560
-#define HEIGHT 1440
+#include "IMGUIManager.hpp"
+#define WIDTH 1280 
+#define HEIGHT 720
 
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
@@ -122,7 +123,7 @@ private:
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
     size_t currentFrame = 0;
-
+    UIManager *imGUI;
     bool framebufferResized = false;
 
     std::unordered_map<std::string, std::vector<std::string>> shaderPath;
@@ -130,9 +131,8 @@ private:
     float lastFrame = 0.0f;
 private:
     void initGLFW();
-    void initIMGUI();
-    void DrawIMGUI();
     void initVulkan();
+    void initIMGUI();
     void cleanUp();
 
     // 配置Vulkan状态信息和设备信息，创建交换链（缓冲机制），提升性能
