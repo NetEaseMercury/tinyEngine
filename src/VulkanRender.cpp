@@ -6,33 +6,54 @@
 
 Camera camera(glm::vec3(0.0f, -4.0f, 4.0f), glm::radians(45.0f), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 bool firstMouse = true;
+bool rightMouseStatus = false;
 float lastX = WIDTH / 2.0f;
 float lastY = HEIGHT / 2.0f;
 
-void processInput(GLFWwindow* window)
-{
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-		camera.speedZ = 1.0f;
-	else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-		camera.speedZ = -1.0f;
-	else
-		camera.speedZ = 0.0f;
-	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-		camera.speedX = -1.0f;
-	else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-		camera.speedX = 1.0f;
-	else
-		camera.speedX = 0.0f;
+
+
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+		rightMouseStatus = true;
+	}
+	else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE)
+	{
+		rightMouseStatus = false;
+	}
 }
 
+void mouseCallback(GLFWwindow* window, double xPos, double yPos) {
+	if (!rightMouseStatus) {
+		return;
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+		camera.speedZ = 1.0f;
+	if (firstMouse) {
+		lastX = static_cast<float>(xPos);
+		lastY = static_cast<float>(yPos);
+		firstMouse = false;
+	}
+	float deltaX, deltaY;
+	deltaX = static_cast<float>(xPos) - lastX;
+	deltaY = static_cast<float>(yPos) - lastY;
+	lastX = static_cast<float>(xPos);
+	lastY = static_cast<float>(yPos);
+	camera.ProcessMouseMovement(deltaX, deltaY);
+	std::cout << deltaX << ";" << deltaY << std::endl;
+}
 
 void VulkanRender::Run()
 {
-	initGLFW();
+	initEngine();
+	gameLoop();
+}
 
+void VulkanRender::initEngine()
+{
+	initGLFW();
 	initVulkan();
 	initIMGUI();
-	gameLoop();
 }
 
 void VulkanRender::Escape()
@@ -46,6 +67,7 @@ void VulkanRender::gameLoop()
 	while (!glfwWindowShouldClose(window)) {
 		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
 			std::cout << "Exit Game" << std::endl;
+			vkDeviceWaitIdle(device);
 			Escape();
 			break;
 		}
@@ -62,13 +84,11 @@ void VulkanRender::gameLoop()
 		}
 		drawFrame();
 		camera.UpdataCameraPosition();
-		DrawUI();
+		DrawIMGUI();
 	}
-
-	vkDeviceWaitIdle(device);
 }
 
-void VulkanRender::DrawUI()
+void VulkanRender::DrawIMGUI()
 {
 	// 获取窗口尺寸
 	int width, height;
@@ -124,6 +144,8 @@ void VulkanRender::initGLFW()
 	window = glfwCreateWindow(WIDTH, HEIGHT, "tinyEngine", nullptr, nullptr);
 	glfwSetWindowUserPointer(window, this);
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+	glfwSetCursorPosCallback(window, mouseCallback);
+	glfwSetMouseButtonCallback(window, mouseButtonCallback);
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
@@ -168,9 +190,15 @@ void VulkanRender::initVulkan()
 	createTextureImage("");
 	createTextureImageView();
 	createTextureSampler();
+
+	//载入模型信息
 	loadModel("");
+
+	//创建VertexBuffer 和 IndexBuffer
 	createVertexBuffer();
 	createIndexBuffer();
+
+
 	createUniformBuffers();
 	createDescriptorPool();
 	createDescriptorSets();
@@ -1241,30 +1269,6 @@ void VulkanRender::cleanupVulkanSwapChain()
 	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 }
 
-void VulkanRender::selectPhysicalDevice()
-{
-	uint32_t deviceCount = 0;
-	vkEnumeratePhysicalDevices(instance_, &deviceCount, nullptr);
-
-	if (deviceCount == 0) {
-		throw std::runtime_error("Failed to find Vulkan supported GPU");
-	}
-
-	std::vector<VkPhysicalDevice> devices(deviceCount);
-	vkEnumeratePhysicalDevices(instance_, &deviceCount, devices.data());
-
-	for (const auto& cur_device : devices) {
-		if (isDeviceSuitable(cur_device)) {
-			physicalDevice = cur_device;
-			break;
-		}
-	}
-
-	if (physicalDevice == VK_NULL_HANDLE) {
-		throw std::runtime_error("Failed to find Vulkan supported GPU");
-	}
-}
-
 void VulkanRender::updateUniformBuffer(uint32_t currentImage)
 {
 	static auto startTime = std::chrono::high_resolution_clock::now();
@@ -1618,6 +1622,22 @@ void VulkanRender::loadModel(std::string modelPath)
 			indices.push_back(uniqueVertices[vertex]);
 		}
 	}
+}
+
+void VulkanRender::processInput(GLFWwindow* window)
+{
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+		camera.speedZ = 1.0f;
+	else if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+		camera.speedZ = -1.0f;
+	else
+		camera.speedZ = 0.0f;
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+		camera.speedX = -1.0f;
+	else if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+		camera.speedX = 1.0f;
+	else
+		camera.speedX = 0.0f;
 }
 
 void VulkanRender::checkExtensions()

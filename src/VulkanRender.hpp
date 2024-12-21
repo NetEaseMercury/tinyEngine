@@ -1,5 +1,5 @@
 #pragma once
-
+#include "VulkanRenderBase.hpp"
 #include "vectex.hpp"
 #include "camera.hpp"
 #include "iostream"
@@ -53,15 +53,16 @@ struct SwapChainSupportDetails {
     std::vector<VkPresentModeKHR> presentModes;
 };
 
-class VulkanRender {
+class VulkanRender :public VulkanRenderBase {
 public:
     VulkanRender() = default;
-    void Run();
-    void Escape();
-
+    void Run() override;
+    void initEngine() override;
+    void Escape() override;
+    void loadModel(std::string modelPath) override;
+    void gameLoop() override;
 private:
     GLFWwindow* window = nullptr;
-
     VkInstance instance_{};
     VkSurfaceKHR surface{};
     ImGui_ImplVulkan_InitInfo guiInfo{};
@@ -128,32 +129,39 @@ private:
 
     float lastFrame = 0.0f;
 private:
-    void gameLoop();
-    void DrawUI();
     void initGLFW();
     void initIMGUI();
+    void DrawIMGUI();
     void initVulkan();
     void cleanUp();
 
-    // vulkan method
+    // 配置Vulkan状态信息和设备信息，创建交换链（缓冲机制），提升性能
     void createVulkanInstance();
     void createSurface();
     void setPhysicalDevice();
     void setLogicalDevice();
-    // 创建交换链（缓冲机制），提升性能
     void createVulkanSwapChain();
+    void recreateSwapChain();
+    void cleanupVulkanSwapChain();
+    
+    // 帧动画更新
+    void drawFrame();
+    void updateUniformBuffer(uint32_t currentImage);
+
 
     void createVulkanImageViews();
     void createVulkanRenderPass();
     void createVulkanDescriptorSetLayout();
-
-    // 支持二进制.spv文件直接读取
     void createVulkanGraphicsPipeline(std::string vertSpv, std::string fragSpv);
     void createVulkanFramebuffers();
-    void createVulkanCommandPool();
+    void createDescriptorSets();
 
+    // Buffer 创建和管理
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer&
         buffer, VkDeviceMemory& bufferMemory);
+    void createVertexBuffer();
+    void createIndexBuffer();
+    void createUniformBuffers();
     void createTextureImage(std::string texturePath);
     void createTextureImageView();
     void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
@@ -162,30 +170,23 @@ private:
         VkDeviceMemory& imageMemory);
     void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
     void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
-    void createVertexBuffer();
-    void createIndexBuffer();
-    void createUniformBuffers();
-    void createDescriptorPool();
-    void createDescriptorSets();
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+
+    // 命令队列创建和管理逻辑
+    void createVulkanCommandPool();
+    void createDescriptorPool();
     void createCommandPool();
     void createCommandBuffers();
     void createFramebuffers();
     void createDepthResources();
     void createSyncObjects();
+
+
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates,
         VkImageTiling tiling, VkFormatFeatureFlags features);
     void createVulkanSyncObjects();
 
-    void recreateSwapChain();
 
-    void cleanupVulkanSwapChain();
-
-    void selectPhysicalDevice();
-
-    void updateUniformBuffer(uint32_t currentImage);
-
-    void drawFrame();
     VkCommandBuffer beginSingleTimeCommands();
 
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
@@ -202,8 +203,8 @@ private:
     VkShaderModule createShaderModule(const std::vector<char>& code);
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 
-    void loadModel(std::string modelPath);
-
+    // GLFW 输入信息处理
+    void processInput(GLFWwindow* window);
     // static functions
     static void checkExtensions();
     static std::vector<char> readFile(const std::string& fileName);
@@ -211,6 +212,8 @@ private:
     static std::vector<const char*> getRequiredExtensions();
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     static void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
+
+    
 
     void createTextureSampler();
     VkFormat findDepthFormat();

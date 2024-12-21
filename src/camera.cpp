@@ -30,6 +30,17 @@ glm::mat4 Camera::GetViewMatrix()
 	return glm::lookAt(Position, Position + Forward, WorldUp);
 }
 
+void Camera::ProcessMouseMovement(float deltaX, float deltaY)
+{
+	Pitch += deltaY * SenceX;
+	Yaw += deltaX * SenceY;
+	if (Pitch > 89.0f)
+		Pitch = 89.0f;
+	if (Pitch < -89.0f)
+		Pitch = -89.0f;
+	UpdataCameraVectors();
+}
+
 //更新摄像机角度
 void Camera::UpdataCameraVectors()
 {
