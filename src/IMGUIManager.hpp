@@ -3,6 +3,7 @@
 #include <backends/imgui_impl_glfw.h>
 #include <vector>
 #include <GLFW/glfw3.h>
+#include <string>
 class UIManager {
 public:
 	UIManager() = default;
@@ -16,14 +17,18 @@ public:
 	void cleanUp();
 	void startNewFrame();
 	void setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
-
+	bool refreshVulkanShader();
+public:
+	std::string modelPath;
+	std::string texturePath;
+	std::string vertexShaderPath;
+	std::string fragmentShaderPath;
 private:
 	void setIMGUIVulkanWindow(ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height);
 	void FrameRender(ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data);
 	void FramePresent(ImGui_ImplVulkanH_Window* wd);
 	void setVulkan();
-	void setLogicDevice();
-
+	void setRefreshVulkanStatus(bool status);
 	VkAllocationCallbacks*   Allocator = nullptr;
 	VkInstance               Instance = VK_NULL_HANDLE;
 	VkPhysicalDevice         PhysicalDevice = VK_NULL_HANDLE;
@@ -39,6 +44,6 @@ private:
 	bool					 SwapChainRebuild = false;
 	GLFWwindow* window = nullptr;
 	VkSurfaceKHR surface;
-
+	bool refreshVulkanRender = false;
 
 };

@@ -20,7 +20,7 @@ static void check_vk_result(VkResult err)
 void UIManager::initIMGUI()
 {
 
-    window = glfwCreateWindow(640, 480, "IMGUIWindow", nullptr, nullptr);
+    window = glfwCreateWindow(1280, 720, "IMGUIWindow", nullptr, nullptr);
 
     ImGui_ImplVulkanH_Window* wd = &MainWindowData;
     setVulkan();
@@ -234,9 +234,14 @@ void UIManager::setVulkan()
     }
 }
 
-void UIManager::setLogicDevice()
+void UIManager::setRefreshVulkanStatus(bool status)
 {
+    refreshVulkanRender = status;
+}
 
+bool UIManager::refreshVulkanShader()
+{
+    return refreshVulkanRender;
 }
 
 void UIManager::startNewFrame()
@@ -262,19 +267,32 @@ void UIManager::startNewFrame()
     static float f = 0.0f;
     static int counter = 0;
 
-    ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+    ImGui::Begin("tinyEngineOperationWindow");                          // Create a window called "Hello, world!" and append into it.
+    std::string prompt= R"(
+        You can move by pressing w, a, s, d. 
+        You can press and hold the right mouse button to rotate the view.
+    )";
+    ImGui::Text(prompt.c_str());               // Display some text (you can use a format strings too)
+   
+    ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
-    ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+    static char model[256] = ""; // 静态数组以存储输入内容
+    static char texture[256] = "";
+    static char vertex[256] = "";
+    static char fragment[256] = "";
+    ImGui::InputText("modelPath", model, sizeof(model));
+    ImGui::InputText("texturePath", texture, sizeof(texture)); // 创建输入框
+    ImGui::InputText("vertexPath", vertex, sizeof(vertex));
+    ImGui::InputText("fragmentPath", fragment, sizeof(fragment));
 
-    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-    ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+    if (ImGui::Button("ModelChangeSubmit")) { // 创建提交按钮
+        modelPath = model;
+        texturePath = texture;
+        vertexShaderPath = vertex;
+        fragmentShaderPath = fragment;
+        setRefreshVulkanStatus(true);
+    }
 
-    if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-        counter++;
-    ImGui::SameLine();
-    ImGui::Text("counter = %d", counter);
-
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / g_io.Framerate, g_io.Framerate);
     ImGui::End();
 
     ImGui::Render();

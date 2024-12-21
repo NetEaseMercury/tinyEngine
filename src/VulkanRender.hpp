@@ -27,11 +27,7 @@ const std::vector<const char*> deviceExtensions = {
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-const std::string defalultVertexShaderPath = "D:/Code/OpenGL/tinyEngine/res/shaders/vert.spv";
-const std::string defalultFragShdaerPath = "D:/Code/OpenGL/tinyEngine/res/shaders/frag.spv";
 
-const std::string defalultModelPath = "D:/Code/OpenGL/tinyEngine/res/models/cyber_room.obj";
-const std::string defalultTexturePath = "D:/Code/OpenGL/tinyEngine/res/textures/cyber_room.png";
 
 struct UniformBufferObject {
     alignas(16) glm::mat4 model;
@@ -212,10 +208,14 @@ private:
     static std::vector<const char*> getRequiredExtensions();
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     static void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-
-    
-
+    char currentPath[1024] ;
     void createTextureSampler();
     VkFormat findDepthFormat();
     bool hasStencilComponent(VkFormat format);
+    bool useDefaultTexturePath = false;
+
+    char defalultVertexShaderPath[1024];
+    char defalultFragShdaerPath[1024];
+    char defalultModelPath[1024];
+    char defalultTexturePath[1024];
 };

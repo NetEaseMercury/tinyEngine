@@ -2,7 +2,7 @@
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <chrono>
-
+#include <direct.h>
 
 Camera camera(glm::vec3(0.0f, -4.0f, 4.0f), glm::radians(45.0f), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 bool firstMouse = true;
@@ -45,6 +45,12 @@ void mouseCallback(GLFWwindow* window, double xPos, double yPos) {
 
 void VulkanRender::Run()
 {
+	if (getcwd(currentPath, sizeof(currentPath))) {
+		snprintf(defalultVertexShaderPath, sizeof(defalultVertexShaderPath), "%s/../../../res/shaders/vert.spv", currentPath);
+		snprintf(defalultFragShdaerPath, sizeof(defalultFragShdaerPath), "%s/../../../res/shaders/frag.spv", currentPath);
+		snprintf(defalultModelPath, sizeof(defalultModelPath), "%s/../../../res/models/cyber_room.obj", currentPath);
+		snprintf(defalultTexturePath, sizeof(defalultTexturePath), "%s/../../../res/textures/cyber_room.png", currentPath);
+	}
 	initEngine();
 	gameLoop();
 }
@@ -85,6 +91,9 @@ void VulkanRender::gameLoop()
 		drawFrame();
 		camera.UpdataCameraPosition();
 		imGUI->startNewFrame();
+		if (imGUI->refreshVulkanShader()) {
+			recreateSwapChain();
+		}
 	}
 }
 
@@ -462,6 +471,16 @@ void VulkanRender::createVulkanGraphicsPipeline(std::string vertSpv, std::string
 	auto vertShaderCode = readFile(vertSpv);
 	auto fragShaderCode = readFile(fragSpv);
 
+
+	// 防住路径输错导致奔溃
+	if (vertShaderCode.empty() || fragShaderCode.empty()) {
+		vertSpv = defalultVertexShaderPath;
+		fragSpv = defalultFragShdaerPath;
+		vertShaderCode = readFile(vertSpv);
+		fragShaderCode = readFile(fragSpv);
+		printf("error VertexShaderPath or FragShdaerPath, use default!");
+	}
+
 	VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
 	VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
 
@@ -683,8 +702,16 @@ void VulkanRender::createTextureImage(std::string texturePath)
 	stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
+	// 防止路径错误问题
 	if (!pixels) {
-		throw std::runtime_error("Failed to load texture image!");
+		texturePath = defalultTexturePath;
+		stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		VkDeviceSize imageSize = texWidth * texHeight * 4;
+		useDefaultTexturePath = true;
+		std::cerr << "error modelPath use default model Path: " << defalultModelPath << "use default texture path: " << defalultTexturePath << std::endl;
+	}
+	else {
+		useDefaultTexturePath = false;
 	}
 
 	VkBuffer stagingBuffer;
@@ -1167,9 +1194,21 @@ void VulkanRender::recreateSwapChain()
 	createVulkanSwapChain();
 	createVulkanImageViews();
 	createVulkanRenderPass();
-	createVulkanGraphicsPipeline("","");
+	//创建VertexBuffer 和 IndexBuffer
+	createVertexBuffer();
+	createIndexBuffer();
+
+	createVulkanGraphicsPipeline(imGUI->vertexShaderPath,imGUI->fragmentShaderPath);
 	createDepthResources();
 	createFramebuffers();
+
+	createTextureImage(imGUI->texturePath);
+	createTextureImageView();
+	createTextureSampler();
+
+	//载入模型信息
+	loadModel(imGUI->modelPath);
+
 	createUniformBuffers();
 	createDescriptorPool();
 	createDescriptorSets();
@@ -1520,7 +1559,7 @@ VkImageView VulkanRender::createImageView(VkImage image, VkFormat format, VkImag
 
 void VulkanRender::loadModel(std::string modelPath)
 {
-	if (modelPath.empty()) {
+	if (modelPath.empty() || useDefaultTexturePath) {
 		modelPath = defalultModelPath;
 	}
 	tinyobj::attrib_t attrib;
@@ -1529,7 +1568,8 @@ void VulkanRender::loadModel(std::string modelPath)
 	std::string warn, err;
 
 	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) {
-		throw std::runtime_error(warn + err);
+		modelPath = defalultModelPath;
+		tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str());
 	}
 
 	std::unordered_map<Vertex, uint32_t, VertexHash> uniqueVertices{};
@@ -1615,7 +1655,7 @@ std::vector<char> VulkanRender::readFile(const std::string& fileName)
 	std::ifstream file(fileName, std::ios::ate | std::ios::binary);
 
 	if (!file.is_open()) {
-		throw std::runtime_error("Failed to open file");
+		return std::vector<char>();
 	}
 
 	auto fileSize = file.tellg();
