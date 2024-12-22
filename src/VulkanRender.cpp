@@ -193,7 +193,8 @@ void VulkanRender::createVulkanInstance()
 	VkInstanceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.pApplicationInfo = &appInfo;
-	createInfo.enabledLayerCount = 0;
+	createInfo.ppEnabledLayerNames = validationLayers.data();
+	createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 	createInfo.pNext = nullptr;
 	// 获取当前所需扩展
 	auto extensions = getRequiredExtensions();
