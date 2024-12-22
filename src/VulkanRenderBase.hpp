@@ -2,6 +2,7 @@
 #define VULKANRENDERBASE_
 
 #include <string>
+#include <glm/glm.hpp>
 /// <summary>
 /// vulkan引擎基类
 /// </summary>
@@ -22,7 +23,7 @@ public:
 	/// 模型加载，用于获取模型的顶点信息
 	/// </summary>
 	/// <param name="modelPath"></param>
-	virtual void loadModel(std::string modelPath) = 0;
+	virtual void loadModel(std::string modelPath, glm::vec3 position) = 0;
 	
 	/// <summary>
 	/// 引擎主循环函数

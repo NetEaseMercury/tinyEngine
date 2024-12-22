@@ -8,6 +8,7 @@
 #include <backends/imgui_impl_vulkan.h>
 #include <backends/imgui_impl_glfw.h>
 #include "IMGUIManager.hpp"
+#include <unordered_map>
 #define WIDTH 1280 
 #define HEIGHT 720
 
@@ -49,6 +50,15 @@ struct SwapChainSupportDetails {
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
+struct Model {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+    glm::mat4 modelMatrix; // 存储模型的变换矩阵
+    VkBuffer vertexBuffer; // 每个模型的顶点缓冲区
+    VkDeviceMemory vertexBufferMemory; // 顶点缓冲区的设备内存
+    VkBuffer indexBuffer; // 每个模型的索引缓冲区
+    VkDeviceMemory indexBufferMemory; // 索引缓冲区的设备内存
+};
 
 class VulkanRender :public VulkanRenderBase {
 public:
@@ -56,7 +66,7 @@ public:
     void Run() override;
     void initEngine() override;
     void Escape() override;
-    void loadModel(std::string modelPath) override;
+    void loadModel(std::string modelPath, glm::vec3 position) override;
     void gameLoop() override;
 private:
     GLFWwindow* window = nullptr;
@@ -118,12 +128,12 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
+    // 存储多个模型
+    std::vector<Model> models;
+
     size_t currentFrame = 0;
     UIManager *imGUI;
     bool framebufferResized = false;
-
-    std::unordered_map<std::string, std::vector<std::string>> shaderPath;
-
     float lastFrame = 0.0f;
 private:
     void initGLFW();
@@ -184,7 +194,7 @@ private:
         VkImageTiling tiling, VkFormatFeatureFlags features);
     void createVulkanSyncObjects();
 
-
+    std::unordered_map<std::string, std::vector<std::string>> modelsPath;
     VkCommandBuffer beginSingleTimeCommands();
 
     void endSingleTimeCommands(VkCommandBuffer commandBuffer);
@@ -209,14 +219,8 @@ private:
     static std::vector<const char*> getRequiredExtensions();
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
     static void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-    char currentPath[1024] ;
     void createTextureSampler();
     VkFormat findDepthFormat();
     bool hasStencilComponent(VkFormat format);
     bool useDefaultTexturePath = false;
-
-    char defalultVertexShaderPath[1024];
-    char defalultFragShdaerPath[1024];
-    char defalultModelPath[1024];
-    char defalultTexturePath[1024];
 };

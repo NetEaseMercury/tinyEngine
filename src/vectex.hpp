@@ -1,7 +1,7 @@
+
+#ifndef VERTEX
+#define VERTEX
 #include <glm/glm.hpp>
-#ifndef GLM_ENABLE_EXPERIMENTAL
-#define GLM_ENABLE_EXPERIMENTAL
-#endif // !GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 #include <array>
@@ -59,3 +59,4 @@ struct VertexHash {
         return hash1 ^ (hash2 << 1) ^ (hash3 << 2);
     }
 };
+#endif // !VERTEX

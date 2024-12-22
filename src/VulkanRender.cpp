@@ -2,7 +2,7 @@
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <chrono>
-#include <direct.h>
+
 
 Camera camera(glm::vec3(0.0f, -4.0f, 4.0f), glm::radians(45.0f), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 bool firstMouse = true;
@@ -43,13 +43,8 @@ void mouseCallback(GLFWwindow* window, double xPos, double yPos) {
 }
 
 void VulkanRender::Run()
-{
-	if (getcwd(currentPath, sizeof(currentPath))) {
-		snprintf(defalultVertexShaderPath, sizeof(defalultVertexShaderPath), "%s/../../../res/shaders/vert.spv", currentPath);
-		snprintf(defalultFragShdaerPath, sizeof(defalultFragShdaerPath), "%s/../../../res/shaders/frag.spv", currentPath);
-		snprintf(defalultModelPath, sizeof(defalultModelPath), "%s/../../../res/models/cyber_room.obj", currentPath);
-		snprintf(defalultTexturePath, sizeof(defalultTexturePath), "%s/../../../res/textures/cyber_room.png", currentPath);
-	}
+{	
+	imGUI = new UIManager();
 	initEngine();
 	gameLoop();
 }
@@ -57,6 +52,7 @@ void VulkanRender::Run()
 void VulkanRender::initEngine()
 {
 	initGLFW();
+	imGUI->setModelDefaultPath();
 	initVulkan();
 	initIMGUI();
 }
@@ -115,7 +111,6 @@ void VulkanRender::initGLFW()
 
 void VulkanRender::initIMGUI()
 {
-	imGUI = new UIManager();
 	imGUI->setVulkanInstance(instance_, NULL);
 	imGUI->setPhysicalDevice(device, physicalDevice);
 	imGUI->initIMGUI();
@@ -131,16 +126,16 @@ void VulkanRender::initVulkan()
 	createVulkanImageViews();
 	createVulkanRenderPass();
 	createVulkanDescriptorSetLayout();
-	createVulkanGraphicsPipeline("", "");
+	createVulkanGraphicsPipeline(imGUI->vertexShaderPath, imGUI->fragShaderPath);
 	createCommandPool();
 	createDepthResources();
 	createFramebuffers();
-	createTextureImage("");
+	createTextureImage(imGUI->texturePath);
 	createTextureImageView();
 	createTextureSampler();
 
 	//载入模型信息
-	loadModel("");
+	loadModel(imGUI->modelPath, glm::vec3(0,0,0));
 
 	//创建VertexBuffer 和 IndexBuffer
 	createVertexBuffer();
@@ -211,18 +206,6 @@ void VulkanRender::createVulkanInstance()
 
 void VulkanRender::createSurface()
 {
-	//uint32_t extensionCount = 0;
-	//vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, NULL);
-
-	//VkExtensionProperties* extensions = (VkExtensionProperties*)malloc(sizeof(VkExtensionProperties) * extensionCount);
-	//vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, extensions);
-
-	//printf("Available Vulkan Instance Extensions:\n");
-	//for (uint32_t i = 0; i < extensionCount; i++) {
-	//	printf("\t%s\n", extensions[i].extensionName);
-	//}
-
-	//free(extensions);
 	if (glfwCreateWindowSurface(instance_, window, nullptr, &surface) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create window surface!");
 	}
@@ -456,24 +439,13 @@ void VulkanRender::createVulkanDescriptorSetLayout()
 
 void VulkanRender::createVulkanGraphicsPipeline(std::string vertSpv, std::string fragSpv)
 {
-	if (vertSpv.empty()) {
-		vertSpv = defalultVertexShaderPath;
-	}
-
-	if (fragSpv.empty()) {
-		fragSpv = defalultFragShdaerPath;
-	}
 	auto vertShaderCode = readFile(vertSpv);
 	auto fragShaderCode = readFile(fragSpv);
 
 
 	// 防住路径输错导致奔溃
 	if (vertShaderCode.empty() || fragShaderCode.empty()) {
-		vertSpv = defalultVertexShaderPath;
-		fragSpv = defalultFragShdaerPath;
-		vertShaderCode = readFile(vertSpv);
-		fragShaderCode = readFile(fragSpv);
-		printf("error VertexShaderPath or FragShdaerPath, use default!");
+		throw std::runtime_error("Failed to read vertSpv or fragSpv!");
 	}
 
 	VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
@@ -690,23 +662,13 @@ void VulkanRender::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkM
 
 void VulkanRender::createTextureImage(std::string texturePath)
 {
-	if (texturePath.empty()) {
-		texturePath = defalultTexturePath;
-	}
 	int texWidth, texHeight, texChannels;
 	stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
 	// 防止路径错误问题
 	if (!pixels) {
-		texturePath = defalultTexturePath;
-		stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-		VkDeviceSize imageSize = texWidth * texHeight * 4;
-		useDefaultTexturePath = true;
-		std::cerr << "error modelPath use default model Path: " << defalultModelPath << "use default texture path: " << defalultTexturePath << std::endl;
-	}
-	else {
-		useDefaultTexturePath = false;
+		throw std::runtime_error("Failed to create Texture Image, please check texture path!");
 	}
 
 	VkBuffer stagingBuffer;
@@ -1193,7 +1155,7 @@ void VulkanRender::recreateSwapChain()
 	createVertexBuffer();
 	createIndexBuffer();
 
-	createVulkanGraphicsPipeline(imGUI->vertexShaderPath,imGUI->fragmentShaderPath);
+	createVulkanGraphicsPipeline(imGUI->vertexShaderPath,imGUI->fragShaderPath);
 	createDepthResources();
 	createFramebuffers();
 
@@ -1202,7 +1164,7 @@ void VulkanRender::recreateSwapChain()
 	createTextureSampler();
 
 	//载入模型信息
-	loadModel(imGUI->modelPath);
+	loadModel(imGUI->modelPath, glm::vec3(0,0,0));
 
 	createUniformBuffers();
 	createDescriptorPool();
@@ -1551,19 +1513,16 @@ VkImageView VulkanRender::createImageView(VkImage image, VkFormat format, VkImag
 	return imageView;
 }
 
-void VulkanRender::loadModel(std::string modelPath)
+void VulkanRender::loadModel(std::string modelPath, glm::vec3 position)
 {
-	if (modelPath.empty() || useDefaultTexturePath) {
-		modelPath = defalultModelPath;
-	}
+	Model newModel;
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
 	std::string warn, err;
 
 	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) {
-		modelPath = defalultModelPath;
-		tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str());
+		throw std::runtime_error("Failed to load model!");
 	}
 
 	std::unordered_map<Vertex, uint32_t, VertexHash> uniqueVertices{};

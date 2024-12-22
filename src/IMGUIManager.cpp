@@ -1,5 +1,5 @@
 ﻿#include "IMGUIManager.hpp"
-
+#include <direct.h>
 static bool IsExtensionAvailable(const ImVector<VkExtensionProperties>& properties, const char* extension)
 {
     for (const VkExtensionProperties& p : properties)
@@ -251,6 +251,25 @@ void UIManager::setRefreshVulkanStatus(bool status)
     refreshVulkanRender = status;
 }
 
+void UIManager::setModelDefaultPath()
+{
+    char currentPath[1024];
+    if (getcwd(currentPath, sizeof(currentPath))) {
+        snprintf(VertexShaderPath, sizeof(VertexShaderPath), "%s/res/shaders/", currentPath);
+        snprintf(FragShdaerPath, sizeof(FragShdaerPath), "%s/res/shaders/", currentPath);
+        snprintf(ModelPath, sizeof(ModelPath), "%s/res/models/", currentPath);
+        snprintf(TexturePath, sizeof(TexturePath), "%s/res/textures/", currentPath);
+        snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
+        snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
+        snprintf(currentModelPath, sizeof(currentModelPath), "%scyber_room.obj", ModelPath);
+        snprintf(currentTexturePath, sizeof(currentTexturePath), "%scyber_room.png", TexturePath);
+        vertexShaderPath = convertBackslashes(currentVertexShaderPath);
+        fragShaderPath = convertBackslashes(currentFragShdaerPath);
+        modelPath = convertBackslashes(currentModelPath);
+        texturePath = convertBackslashes(currentTexturePath);
+    }
+}
+
 bool UIManager::refreshVulkanShader()
 {
     return refreshVulkanRender;
@@ -294,21 +313,47 @@ void UIManager::startNewFrame()
 
     ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
-    static char model[256] = ""; // 静态数组以存储输入内容
-    static char texture[256] = "";
-    static char vertex[256] = "";
-    static char fragment[256] = "";
-    ImGui::InputText("modelPath", model, sizeof(model));
-    ImGui::InputText("texturePath", texture, sizeof(texture)); // 创建输入框
-    ImGui::InputText("vertexPath", vertex, sizeof(vertex));
-    ImGui::InputText("fragmentPath", fragment, sizeof(fragment));
-    
-    if (ImGui::Button("ModelChangeSubmit")) { // 创建提交按钮
-        modelPath = convertBackslashes(model);
-        texturePath = convertBackslashes(texture);
-        vertexShaderPath = convertBackslashes(vertex);
-        fragmentShaderPath = convertBackslashes(fragment);
-        setRefreshVulkanStatus(true);
+    // 创建一个静态变量来存储选中项的索引
+    static int selectedIndex = 0;
+
+    // 定义下拉选项的内容
+    const char* items[] = { "cyberRoom", "fantasyGameInn", "vikingRoom"};
+    const int itemCount = IM_ARRAYSIZE(items);
+
+    // 创建下拉选项框
+    ImGui::Combo("下拉选项框", &selectedIndex, items, itemCount);
+    if (selectedIndex != currentIndex) {
+        switch (selectedIndex)
+        {
+        case 0:
+            snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
+            snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
+            snprintf(currentModelPath, sizeof(currentModelPath), "%scyber_room.obj", ModelPath);
+            snprintf(currentTexturePath, sizeof(currentTexturePath), "%scyber_room.png", TexturePath);
+            setRefreshVulkanStatus(true);
+            break;
+        case 1:
+            snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
+            snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
+            snprintf(currentModelPath, sizeof(currentModelPath), "%sfantasy_game_inn.obj", ModelPath);
+            snprintf(currentTexturePath, sizeof(currentTexturePath), "%sfantasy_game_inn.png", TexturePath);
+            setRefreshVulkanStatus(true);
+            break;
+        case 2:
+            snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
+            snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
+            snprintf(currentModelPath, sizeof(currentModelPath), "%sviking_room.obj", ModelPath);
+            snprintf(currentTexturePath, sizeof(currentTexturePath), "%sviking_room.png", TexturePath);
+            setRefreshVulkanStatus(true);
+            break;
+        default:
+            break;
+        }
+        vertexShaderPath = convertBackslashes(currentVertexShaderPath);
+        fragShaderPath = convertBackslashes(currentFragShdaerPath);
+        modelPath = convertBackslashes(currentModelPath);
+        texturePath = convertBackslashes(currentTexturePath);
+        currentIndex = selectedIndex;
     }
 
     ImGui::End();

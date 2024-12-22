@@ -20,12 +20,13 @@ public:
 	bool refreshVulkanShader();
 	float updateSpeed();
 	void setRefreshVulkanStatus(bool status);
+	void setModelDefaultPath();
 public:
+
+	std::string vertexShaderPath;
+	std::string fragShaderPath;
 	std::string modelPath;
 	std::string texturePath;
-	std::string vertexShaderPath;
-	std::string fragmentShaderPath;
-
 public:
 	float speed;
 private:
@@ -51,4 +52,15 @@ private:
 	VkSurfaceKHR surface;
 	bool refreshVulkanRender = false;
 
+	char VertexShaderPath[1024];
+	char FragShdaerPath[1024];
+	char ModelPath[1024];
+	char TexturePath[1024];
+
+	char currentVertexShaderPath[1024];
+	char currentFragShdaerPath[1024];
+	char currentModelPath[1024];
+	char currentTexturePath[1024];
+
+	int currentIndex = -1;
 };

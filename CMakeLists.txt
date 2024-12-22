@@ -26,8 +26,6 @@ add_executable(${PROJECT_NAME}
 
 )
 
-
-
 target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/glfw/include
                 thirdParty/stb
@@ -45,7 +43,10 @@ get_target_property(TARGET_DIR tinyEngine RUNTIME_OUTPUT_DIRECTORY)
 # 添加预处理命令
 add_definitions(-DGLEW_STATIC)
 
-
+# 拷贝资源
+set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/res")
+set(DESTINATION_DIR "${CMAKE_BINARY_DIR}")
+file(COPY ${SOURCE_DIR} DESTINATION ${DESTINATION_DIR})
 
 target_link_libraries(${PROJECT_NAME}
         Vulkan::Vulkan
