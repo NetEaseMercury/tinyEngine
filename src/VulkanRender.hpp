@@ -158,6 +158,8 @@ private:
     void createVertexBuffer();
     void createIndexBuffer();
     void createUniformBuffers();
+    void createCommandBuffers();
+    void createFramebuffers();
     void createTextureImage(std::string texturePath);
     void createTextureImageView();
     void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
@@ -168,12 +170,12 @@ private:
     void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
-    // 命令队列创建和管理逻辑
+    // 队列和buffer创建
     void createVulkanCommandPool();
     void createDescriptorPool();
     void createCommandPool();
-    void createCommandBuffers();
-    void createFramebuffers();
+
+
     void createDepthResources();
     void createSyncObjects();
 
@@ -202,7 +204,6 @@ private:
     // GLFW 输入信息处理
     void processInput(GLFWwindow* window);
     // static functions
-    static void checkExtensions();
     static std::vector<char> readFile(const std::string& fileName);
     static bool checkDeviceExtensionSupport(VkPhysicalDevice dev);
     static std::vector<const char*> getRequiredExtensions();

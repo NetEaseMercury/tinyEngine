@@ -18,17 +18,22 @@ public:
 	void startNewFrame();
 	void setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
 	bool refreshVulkanShader();
+	float updateSpeed();
+	void setRefreshVulkanStatus(bool status);
 public:
 	std::string modelPath;
 	std::string texturePath;
 	std::string vertexShaderPath;
 	std::string fragmentShaderPath;
+
+public:
+	float speed;
 private:
 	void setIMGUIVulkanWindow(ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height);
 	void FrameRender(ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data);
 	void FramePresent(ImGui_ImplVulkanH_Window* wd);
 	void setVulkan();
-	void setRefreshVulkanStatus(bool status);
+
 	VkAllocationCallbacks*   Allocator = nullptr;
 	VkInstance               Instance = VK_NULL_HANDLE;
 	VkPhysicalDevice         PhysicalDevice = VK_NULL_HANDLE;

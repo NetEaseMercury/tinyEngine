@@ -17,6 +17,19 @@ static void check_vk_result(VkResult err)
         abort();
 }
 
+static std::string convertBackslashes(const std::string& input) {
+    std::string output;
+    for (auto ch : input) {
+        if (ch == '\\') {
+            output += "\\\\";
+        }
+        else {
+            output += ch;
+        }
+    }
+    return output;
+}
+
 void UIManager::initIMGUI()
 {
 
@@ -188,8 +201,7 @@ void UIManager::setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice
 {
     PhysicalDevice = physicalDevice;
     Device = device;
-
-    vkGetDeviceQueue(Device, 0, 0, &Queue);
+    vkGetDeviceQueue(Device, QueueFamily, 0, &Queue);
 }
 
 void UIManager::setVulkan()
@@ -244,6 +256,11 @@ bool UIManager::refreshVulkanShader()
     return refreshVulkanRender;
 }
 
+float UIManager::updateSpeed()
+{
+    return speed;
+}
+
 void UIManager::startNewFrame()
 {
     ImGui_ImplVulkan_NewFrame();
@@ -267,13 +284,14 @@ void UIManager::startNewFrame()
     static float f = 0.0f;
     static int counter = 0;
 
-    ImGui::Begin("tinyEngineOperationWindow");                          // Create a window called "Hello, world!" and append into it.
+    ImGui::Begin("tinyEngineOperationWindow"); 
     std::string prompt= R"(
         You can move by pressing w, a, s, d. 
         You can press and hold the right mouse button to rotate the view.
     )";
-    ImGui::Text(prompt.c_str());               // Display some text (you can use a format strings too)
-   
+    ImGui::Text(prompt.c_str());              
+    ImGui::SliderFloat("Camera Move Speed", &speed, 0.0f, 1.0f);
+
     ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
     static char model[256] = ""; // 静态数组以存储输入内容
@@ -284,12 +302,12 @@ void UIManager::startNewFrame()
     ImGui::InputText("texturePath", texture, sizeof(texture)); // 创建输入框
     ImGui::InputText("vertexPath", vertex, sizeof(vertex));
     ImGui::InputText("fragmentPath", fragment, sizeof(fragment));
-
+    
     if (ImGui::Button("ModelChangeSubmit")) { // 创建提交按钮
-        modelPath = model;
-        texturePath = texture;
-        vertexShaderPath = vertex;
-        fragmentShaderPath = fragment;
+        modelPath = convertBackslashes(model);
+        texturePath = convertBackslashes(texture);
+        vertexShaderPath = convertBackslashes(vertex);
+        fragmentShaderPath = convertBackslashes(fragment);
         setRefreshVulkanStatus(true);
     }
 

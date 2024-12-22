@@ -18,8 +18,7 @@ enum Movement {
     RIGHT
 };
 
-// 默认配置
-const float SPEED = 2.5f;
+
 
 
 class Camera
@@ -48,7 +47,10 @@ public:
 	void ProcessMouseMovement(float deltaX, float deltaY);
 	//更新摄像机位置
 	void UpdataCameraPosition();
+	void SetSpeed(float speed);
 
+	// 默认配置
+	float SPEED = 0.1;
 private:
 	//更新摄像机角度
 	void UpdataCameraVectors();

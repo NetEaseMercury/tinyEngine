@@ -40,7 +40,6 @@ void mouseCallback(GLFWwindow* window, double xPos, double yPos) {
 	lastX = static_cast<float>(xPos);
 	lastY = static_cast<float>(yPos);
 	camera.ProcessMouseMovement(deltaX, deltaY);
-	std::cout << deltaX << ";" << deltaY << std::endl;
 }
 
 void VulkanRender::Run()
@@ -65,6 +64,7 @@ void VulkanRender::initEngine()
 void VulkanRender::Escape()
 {
 	cleanUp();
+	imGUI->cleanUp();
 }
 
 void VulkanRender::gameLoop()
@@ -86,14 +86,17 @@ void VulkanRender::gameLoop()
 		else {
 			float time = currentFrame - lastFrame;
 			lastFrame = currentFrame;
-			processInput(window);
+
 		}
-		drawFrame();
+		processInput(window);
 		camera.UpdataCameraPosition();
+		drawFrame();
 		imGUI->startNewFrame();
+		camera.SPEED = imGUI->updateSpeed();
 		if (imGUI->refreshVulkanShader()) {
 			recreateSwapChain();
 		}
+		imGUI->setRefreshVulkanStatus(false);
 	}
 }
 
@@ -153,12 +156,6 @@ void VulkanRender::initVulkan()
 
 void VulkanRender::cleanUp()
 {
-	// ÇåÀí
-	//ImGui_ImplVulkan_Shutdown();
-	//ImGui_ImplGlfw_Shutdown();
-	//ImGui::DestroyContext();
-	//cleanupVulkanSwapChain();
-	imGUI->cleanUp();
 	vkDestroySampler(device, textureSampler, nullptr);
 	vkDestroyImageView(device, textureImageView, nullptr);
 
@@ -210,8 +207,6 @@ void VulkanRender::createVulkanInstance()
 	if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create vulkan instance!");
 	}
-
-	checkExtensions();
 }
 
 void VulkanRender::createSurface()
@@ -1258,7 +1253,6 @@ void VulkanRender::updateUniformBuffer(uint32_t currentImage)
 		glm::vec3(0.0f, 0.0f, 1.0f));
 
 	ubo.view = camera.GetViewMatrix();
-
 	ubo.proj = glm::perspective(glm::radians(45.0f),
 		swapChainExtent.width / static_cast<float>(swapChainExtent.height),
 		0.1f, 10.0f);
@@ -1615,39 +1609,6 @@ void VulkanRender::processInput(GLFWwindow* window)
 		camera.speedX = 1.0f;
 	else
 		camera.speedX = 0.0f;
-}
-
-void VulkanRender::checkExtensions()
-{
-	//uint32_t extensionCount = 0;
-	//vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-
-	//std::vector<VkExtensionProperties> extensions(extensionCount);
-	//vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-
-	//std::unordered_set<std::string> supportedExtensionList;
-
-	//std::cout << "----Extension Setup-------------------------------------------------\n";
-	//std::cout << extensionCount << " available extensions:\n";
-
-	//for (const auto& extension : extensions) {
-	//	std::cout << "\t" << extension.extensionName << "\n";
-	//	supportedExtensionList.insert(extension.extensionName);
-	//}
-
-	//uint32_t glfwExtensionCount = 0;
-	//auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-	//std::cout << "\nRequired extensions:\n";
-
-	//for (size_t i = 0; i < glfwExtensionCount; ++i) {
-	//	if (!supportedExtensionList.count(glfwExtensions[i])) {
-	//		throw std::runtime_error("Unsupported extension: " + std::string(glfwExtensions[i]));
-	//	}
-	//	else {
-	//		std::cout << "\t" << glfwExtensions[i] << "\n";
-	//	}
-	//}
 }
 
 std::vector<char> VulkanRender::readFile(const std::string& fileName)

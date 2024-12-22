@@ -54,6 +54,10 @@ void Camera::UpdataCameraVectors()
 //更新摄像机位置
 void Camera::UpdataCameraPosition()
 {
-	//Position += glm::vec3(speedX, speedY,-speedZ) * 0.3f;
-	Position += Forward * speedZ * 0.001f + Right * speedX * 0.001f + Up * speedY * 0.001f;
+	Position += Forward * speedZ * SPEED + Right * speedX * SPEED + Up * speedY * SPEED;
+}
+
+void Camera::SetSpeed(float speed)
+{
+	SPEED = speed;
 }
