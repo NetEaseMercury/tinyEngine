@@ -1,72 +1,21 @@
 #pragma once
-#include "VulkanRenderBase.hpp"
-#include "vectex.hpp"
-#include "camera.hpp"
-#include "iostream"
-#include <optional>
-#include <imgui.h>
-#include <backends/imgui_impl_vulkan.h>
-#include <backends/imgui_impl_glfw.h>
+#include "GameManageBase.hpp"
+#include "VulkanInstance.h"
 #include "IMGUIManager.hpp"
-#include <unordered_map>
-#define WIDTH 1280 
-#define HEIGHT 720
-
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
-
-const std::vector<const char*> validationLayers = {
-        "VK_LAYER_KHRONOS_validation"
-};
-
-const std::vector<const char*> deviceExtensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
-const int MAX_FRAMES_IN_FLIGHT = 2;
 
 
-
-struct UniformBufferObject {
-    alignas(16) glm::mat4 model;
-    alignas(16) glm::mat4 view;
-    alignas(16) glm::mat4 proj;
-};
-
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
-
-    [[nodiscard]] bool isComplete() const {
-        return graphicsFamily.has_value() && presentFamily.has_value();
-    }
-};
-
-struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
-struct Model {
-    std::vector<Vertex> vertices;
-    std::vector<uint32_t> indices;
-    glm::mat4 modelMatrix; // 存储模型的变换矩阵
-    VkBuffer vertexBuffer; // 每个模型的顶点缓冲区
-    VkDeviceMemory vertexBufferMemory; // 顶点缓冲区的设备内存
-    VkBuffer indexBuffer; // 每个模型的索引缓冲区
-    VkDeviceMemory indexBufferMemory; // 索引缓冲区的设备内存
-};
-
-class VulkanRender :public VulkanRenderBase {
+class GameManage :public GameManageBase {
 public:
-    VulkanRender() = default;
+    GameManage() {
+        vulkan = std::make_unique<VulkanInstance>();
+        imGUI = std::make_unique<UIManager>();
+        //render = std::make_uniqueM<VulkanRender>();
+    }
+    ~GameManage() = default;
     void Run() override;
     void initEngine() override;
     void Escape() override;
-    void loadModel(std::string modelPath, glm::vec3 position) override;
+    void loadModel(std::vector<std::string> modelsPath, glm::vec3 position) override;
     void gameLoop() override;
 private:
     GLFWwindow* window = nullptr;
@@ -98,10 +47,10 @@ private:
     VkPipelineLayout pipelineLayout{};
     VkPipeline graphicsPipeline{};
 
-    VkCommandPool commandPool{};
+    VkCommandPool g_commandPool{};
 
-    VkImage depthImage{};
-    VkDeviceMemory depthImageMemory{};
+    VkImage g_depthImage{};
+    VkDeviceMemory g_depthImageMemory{};
     VkImageView depthImageView{};
 
     VkImage textureImage{};
@@ -128,16 +77,15 @@ private:
     std::vector<VkSemaphore> renderFinishedSemaphores;
     std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
-    // 存储多个模型
-    std::vector<Model> models;
 
     size_t currentFrame = 0;
-    UIManager *imGUI;
+    std::unique_ptr<UIManager> imGUI;
+    std::unique_ptr<VulkanInstance> vulkan;
+    //std::unique_ptr<VulkanRender> render;
     bool framebufferResized = false;
     float lastFrame = 0.0f;
 private:
     void initGLFW();
-    void initVulkan();
     void initIMGUI();
     void cleanUp();
 

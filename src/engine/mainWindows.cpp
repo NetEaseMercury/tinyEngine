@@ -1,14 +1,13 @@
 ﻿
 #include "mainWindows.h"
-#include "VulkanRender.hpp"
-
+#include "GameManage.hpp"
 using namespace std;
 
 int main(void)
 {
-    VulkanRender vr;
+    GameManage *vr = new GameManage();
     try {
-        vr.Run();
+        vr->Run();
     }
     catch(const std::exception e){
         std::cerr << e.what() << std::endl;

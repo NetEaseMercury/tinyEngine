@@ -1,4 +1,4 @@
-#include "VulkanRender.hpp"
+#include "GameManage.hpp"
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <chrono>
@@ -42,28 +42,32 @@ void mouseCallback(GLFWwindow* window, double xPos, double yPos) {
 	camera.ProcessMouseMovement(deltaX, deltaY);
 }
 
-void VulkanRender::Run()
+void GameManage::Run()
 {	
-	imGUI = new UIManager();
+	imGUI = std::make_unique<UIManager>();
+	vulkan = std::make_unique<VulkanInstance>();
 	initEngine();
 	gameLoop();
 }
 
-void VulkanRender::initEngine()
+void GameManage::initEngine()
 {
 	initGLFW();
 	imGUI->setModelDefaultPath();
-	initVulkan();
+
+	// vulkan init should slow than GLFW
+	vulkan->init(window);
+
 	initIMGUI();
 }
 
-void VulkanRender::Escape()
+void GameManage::Escape()
 {
 	cleanUp();
 	imGUI->cleanUp();
 }
 
-void VulkanRender::gameLoop()
+void GameManage::gameLoop()
 {
 	
 	while (!glfwWindowShouldClose(window)) {
@@ -96,7 +100,7 @@ void VulkanRender::gameLoop()
 	}
 }
 
-void VulkanRender::initGLFW()
+void GameManage::initGLFW()
 {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -109,47 +113,15 @@ void VulkanRender::initGLFW()
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
-void VulkanRender::initIMGUI()
+void GameManage::initIMGUI()
 {
 	imGUI->setVulkanInstance(instance_, NULL);
 	imGUI->setPhysicalDevice(device, physicalDevice);
 	imGUI->initIMGUI();
 }
 
-void VulkanRender::initVulkan()
-{
-	createVulkanInstance();
-	createSurface();
-	setPhysicalDevice();
-	setLogicalDevice();
-	createVulkanSwapChain();
-	createVulkanImageViews();
-	createVulkanRenderPass();
-	createVulkanDescriptorSetLayout();
-	createVulkanGraphicsPipeline(imGUI->vertexShaderPath, imGUI->fragShaderPath);
-	createCommandPool();
-	createDepthResources();
-	createFramebuffers();
-	createTextureImage(imGUI->texturePath);
-	createTextureImageView();
-	createTextureSampler();
 
-	//载入模型信息
-	loadModel(imGUI->modelPath, glm::vec3(0,0,0));
-
-	//创建VertexBuffer 和 IndexBuffer
-	createVertexBuffer();
-	createIndexBuffer();
-
-
-	createUniformBuffers();
-	createDescriptorPool();
-	createDescriptorSets();
-	createCommandBuffers();
-	createSyncObjects();
-}
-
-void VulkanRender::cleanUp()
+void GameManage::cleanUp()
 {
 	vkDestroySampler(device, textureSampler, nullptr);
 	vkDestroyImageView(device, textureImageView, nullptr);
@@ -171,7 +143,7 @@ void VulkanRender::cleanUp()
 		vkDestroyFence(device, inFlightFences[i], nullptr);
 	}
 
-	vkDestroyCommandPool(device, commandPool, nullptr);
+	vkDestroyCommandPool(device, g_commandPool, nullptr);
 
 	vkDestroyDevice(device, nullptr);
 
@@ -182,7 +154,7 @@ void VulkanRender::cleanUp()
 	glfwTerminate();
 }
 
-void VulkanRender::createVulkanInstance()
+void GameManage::createVulkanInstance()
 {
 	VkApplicationInfo appInfo{};
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -205,14 +177,14 @@ void VulkanRender::createVulkanInstance()
 	}
 }
 
-void VulkanRender::createSurface()
+void GameManage::createSurface()
 {
 	if (glfwCreateWindowSurface(instance_, window, nullptr, &surface) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create window surface!");
 	}
 }
 
-void VulkanRender::setPhysicalDevice()
+void GameManage::setPhysicalDevice()
 {
 	uint32_t deviceCount = 0;
 	vkEnumeratePhysicalDevices(instance_, &deviceCount, nullptr);
@@ -232,7 +204,7 @@ void VulkanRender::setPhysicalDevice()
 	}
 }
 
-void VulkanRender::setLogicalDevice()
+void GameManage::setLogicalDevice()
 {
 	QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
@@ -286,7 +258,7 @@ void VulkanRender::setLogicalDevice()
 	vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 }
 
-void VulkanRender::createVulkanSwapChain()
+void GameManage::createVulkanSwapChain()
 {
 	SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
 
@@ -340,7 +312,7 @@ void VulkanRender::createVulkanSwapChain()
 	swapChainExtent = extent;
 }
 
-void VulkanRender::createVulkanImageViews()
+void GameManage::createVulkanImageViews()
 {
 	swapChainImageViews.resize(swapChainImages.size());
 
@@ -349,7 +321,7 @@ void VulkanRender::createVulkanImageViews()
 	}
 }
 
-void VulkanRender::createVulkanRenderPass()
+void GameManage::createVulkanRenderPass()
 {
 	VkAttachmentDescription colorAttachment{};
 	colorAttachment.format = swapChainImageFormat;
@@ -411,7 +383,7 @@ void VulkanRender::createVulkanRenderPass()
 
 }
 
-void VulkanRender::createVulkanDescriptorSetLayout()
+void GameManage::createVulkanDescriptorSetLayout()
 {
 	VkDescriptorSetLayoutBinding uboLayoutBinding{};
 	uboLayoutBinding.binding = 0;
@@ -438,7 +410,7 @@ void VulkanRender::createVulkanDescriptorSetLayout()
 	}
 }
 
-void VulkanRender::createVulkanGraphicsPipeline(std::string vertSpv, std::string fragSpv)
+void GameManage::createVulkanGraphicsPipeline(std::string vertSpv, std::string fragSpv)
 {
 	auto vertShaderCode = readFile(vertSpv);
 	auto fragShaderCode = readFile(fragSpv);
@@ -596,7 +568,7 @@ void VulkanRender::createVulkanGraphicsPipeline(std::string vertSpv, std::string
 	vkDestroyShaderModule(device, fragShaderModule, nullptr);
 }
 
-void VulkanRender::createVulkanFramebuffers()
+void GameManage::createVulkanFramebuffers()
 {
 	swapChainFramebuffers.resize(swapChainImageViews.size());
 
@@ -621,7 +593,7 @@ void VulkanRender::createVulkanFramebuffers()
 	}
 }
 
-void VulkanRender::createVulkanCommandPool()
+void GameManage::createVulkanCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
@@ -629,12 +601,12 @@ void VulkanRender::createVulkanCommandPool()
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-	if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+	if (vkCreateCommandPool(device, &poolInfo, nullptr, &g_commandPool) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create command pool!");
 	}
 }
 
-void VulkanRender::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+void GameManage::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
 {
 	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -661,7 +633,7 @@ void VulkanRender::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkM
 	vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
 
-void VulkanRender::createTextureImage(std::string texturePath)
+void GameManage::createTextureImage(std::string texturePath)
 {
 	int texWidth, texHeight, texChannels;
 	stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
@@ -699,12 +671,12 @@ void VulkanRender::createTextureImage(std::string texturePath)
 	vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
-void VulkanRender::createTextureImageView()
+void GameManage::createTextureImageView()
 {
 	textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
-void VulkanRender::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+void GameManage::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
 {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -741,7 +713,7 @@ void VulkanRender::createImage(uint32_t width, uint32_t height, VkFormat format,
 
 }
 
-void VulkanRender::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+void GameManage::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
 {
 	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -774,7 +746,7 @@ void VulkanRender::copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t wi
 	endSingleTimeCommands(commandBuffer);
 }
 
-void VulkanRender::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+void GameManage::transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
 	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -825,7 +797,7 @@ void VulkanRender::transitionImageLayout(VkImage image, VkFormat format, VkImage
 	endSingleTimeCommands(commandBuffer);
 }
 
-void VulkanRender::createVertexBuffer()
+void GameManage::createVertexBuffer()
 {
 	VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
 
@@ -850,7 +822,7 @@ void VulkanRender::createVertexBuffer()
 	vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
-void VulkanRender::createIndexBuffer()
+void GameManage::createIndexBuffer()
 {
 	VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
@@ -875,7 +847,7 @@ void VulkanRender::createIndexBuffer()
 	vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
 
-void VulkanRender::createUniformBuffers()
+void GameManage::createUniformBuffers()
 {
 	VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
@@ -889,7 +861,7 @@ void VulkanRender::createUniformBuffers()
 	}
 }
 
-void VulkanRender::createDescriptorPool()
+void GameManage::createDescriptorPool()
 {
 	std::array<VkDescriptorPoolSize, 2> poolSizes{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -908,7 +880,7 @@ void VulkanRender::createDescriptorPool()
 	}
 }
 
-void VulkanRender::createDescriptorSets()
+void GameManage::createDescriptorSets()
 {
 	std::vector<VkDescriptorSetLayout> layouts(swapChainImages.size(), descriptorSetLayout);
 	VkDescriptorSetAllocateInfo allocateInfo{};
@@ -955,7 +927,7 @@ void VulkanRender::createDescriptorSets()
 	}
 }
 
-void VulkanRender::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+void GameManage::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
 	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
 
@@ -966,7 +938,7 @@ void VulkanRender::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSi
 	endSingleTimeCommands(commandBuffer);
 }
 
-void VulkanRender::createCommandPool()
+void GameManage::createCommandPool()
 {
 	QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
@@ -974,18 +946,18 @@ void VulkanRender::createCommandPool()
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-	if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+	if (vkCreateCommandPool(device, &poolInfo, nullptr, &g_commandPool) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create command pool!");
 	}
 }
 
-void VulkanRender::createCommandBuffers()
+void GameManage::createCommandBuffers()
 {
 	commandBuffers.resize(swapChainFramebuffers.size());
 
 	VkCommandBufferAllocateInfo allocateInfo{};
 	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocateInfo.commandPool = commandPool;
+	allocateInfo.commandPool = g_commandPool;
 	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocateInfo.commandBufferCount = (uint32_t)commandBuffers.size();
 
@@ -1035,7 +1007,7 @@ void VulkanRender::createCommandBuffers()
 	}
 }
 
-void VulkanRender::createFramebuffers()
+void GameManage::createFramebuffers()
 	{
 		swapChainFramebuffers.resize(swapChainImageViews.size());
 
@@ -1060,17 +1032,17 @@ void VulkanRender::createFramebuffers()
 		}
 	}
 
-	void VulkanRender::createDepthResources()
+	void GameManage::createDepthResources()
 {
 		VkFormat depthFormat = findDepthFormat();
 
 		createImage(swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL,
-			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage,
-			depthImageMemory);
-		depthImageView = createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, g_depthImage,
+			g_depthImageMemory);
+		depthImageView = createImageView(g_depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 }
 
-	void VulkanRender::createSyncObjects()
+	void GameManage::createSyncObjects()
 	{
 		imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 		renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1095,7 +1067,7 @@ void VulkanRender::createFramebuffers()
 
 	}
 
-VkFormat VulkanRender::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
+VkFormat GameManage::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
 {
 	for (VkFormat format : candidates) {
 		VkFormatProperties props;
@@ -1112,7 +1084,7 @@ VkFormat VulkanRender::findSupportedFormat(const std::vector<VkFormat>& candidat
 	throw std::runtime_error("Failed to find supported format!");
 }
 
-void VulkanRender::createVulkanSyncObjects()
+void GameManage::createVulkanSyncObjects()
 {
 	imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
 	renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
@@ -1137,7 +1109,7 @@ void VulkanRender::createVulkanSyncObjects()
 
 }
 
-void VulkanRender::recreateSwapChain()
+void GameManage::recreateSwapChain()
 {
 	int width = 0, height = 0;
 	while (width == 0 || height == 0) {
@@ -1173,17 +1145,17 @@ void VulkanRender::recreateSwapChain()
 	createCommandBuffers();
 }
 
-void VulkanRender::cleanupVulkanSwapChain()
+void GameManage::cleanupVulkanSwapChain()
 {
 	vkDestroyImageView(device, depthImageView, nullptr);
-	vkDestroyImage(device, depthImage, nullptr);
-	vkFreeMemory(device, depthImageMemory, nullptr);
+	vkDestroyImage(device, g_depthImage, nullptr);
+	vkFreeMemory(device, g_depthImageMemory, nullptr);
 
 	for (auto framebuffer : swapChainFramebuffers) {
 		vkDestroyFramebuffer(device, framebuffer, nullptr);
 	}
 
-	vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+	vkFreeCommandBuffers(device, g_commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
 
 	vkDestroyPipeline(device, graphicsPipeline, nullptr);
 	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
@@ -1203,7 +1175,7 @@ void VulkanRender::cleanupVulkanSwapChain()
 	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 }
 
-void VulkanRender::updateUniformBuffer(uint32_t currentImage)
+void GameManage::updateUniformBuffer(uint32_t currentImage)
 {
 	static auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -1228,7 +1200,7 @@ void VulkanRender::updateUniformBuffer(uint32_t currentImage)
 	vkUnmapMemory(device, uniformBuffersMemory[currentImage]);
 }
 
-void VulkanRender::drawFrame()
+void GameManage::drawFrame()
 {
 	vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -1304,12 +1276,12 @@ void VulkanRender::drawFrame()
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-VkCommandBuffer VulkanRender::beginSingleTimeCommands()
+VkCommandBuffer GameManage::beginSingleTimeCommands()
 {
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandPool = commandPool;
+	allocInfo.commandPool = g_commandPool;
 	allocInfo.commandBufferCount = 1;
 
 	VkCommandBuffer commandBuffer;
@@ -1324,7 +1296,7 @@ VkCommandBuffer VulkanRender::beginSingleTimeCommands()
 	return commandBuffer;
 }
 
-void VulkanRender::endSingleTimeCommands(VkCommandBuffer commandBuffer)
+void GameManage::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 {
 	vkEndCommandBuffer(commandBuffer);
 
@@ -1336,10 +1308,10 @@ void VulkanRender::endSingleTimeCommands(VkCommandBuffer commandBuffer)
 	vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
 	vkQueueWaitIdle(graphicsQueue);
 
-	vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+	vkFreeCommandBuffers(device, g_commandPool, 1, &commandBuffer);
 }
 
-QueueFamilyIndices VulkanRender::findQueueFamilies(VkPhysicalDevice dev)
+QueueFamilyIndices GameManage::findQueueFamilies(VkPhysicalDevice dev)
 {
 	QueueFamilyIndices indices;
 
@@ -1372,7 +1344,7 @@ QueueFamilyIndices VulkanRender::findQueueFamilies(VkPhysicalDevice dev)
 	return indices;
 }
 
-bool VulkanRender::isDeviceSuitable(VkPhysicalDevice dev)
+bool GameManage::isDeviceSuitable(VkPhysicalDevice dev)
 {
 	QueueFamilyIndices indices = findQueueFamilies(dev);
 
@@ -1390,7 +1362,7 @@ bool VulkanRender::isDeviceSuitable(VkPhysicalDevice dev)
 	return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
 }
 
-uint32_t VulkanRender::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+uint32_t GameManage::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
 	VkPhysicalDeviceMemoryProperties memProperties{};
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -1404,7 +1376,7 @@ uint32_t VulkanRender::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags
 	throw std::runtime_error("Failed to find suitable memory type!");
 }
 
-SwapChainSupportDetails VulkanRender::querySwapChainSupport(VkPhysicalDevice dev)
+SwapChainSupportDetails GameManage::querySwapChainSupport(VkPhysicalDevice dev)
 {
 	SwapChainSupportDetails details;
 
@@ -1427,7 +1399,7 @@ SwapChainSupportDetails VulkanRender::querySwapChainSupport(VkPhysicalDevice dev
 	return details;
 }
 
-VkSurfaceFormatKHR VulkanRender::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
+VkSurfaceFormatKHR GameManage::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 {
 	for (const auto& availableFormat : availableFormats) {
 		if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
@@ -1439,7 +1411,7 @@ VkSurfaceFormatKHR VulkanRender::chooseSwapSurfaceFormat(const std::vector<VkSur
 	return availableFormats.front();
 }
 
-VkPresentModeKHR VulkanRender::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
+VkPresentModeKHR GameManage::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
 {
 	for (const auto& availablePresentMode : availablePresentModes) {
 		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -1450,7 +1422,7 @@ VkPresentModeKHR VulkanRender::chooseSwapPresentMode(const std::vector<VkPresent
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D VulkanRender::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+VkExtent2D GameManage::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
 {
 	if (capabilities.currentExtent.width != UINT32_MAX) {
 		return capabilities.currentExtent;
@@ -1478,7 +1450,7 @@ VkExtent2D VulkanRender::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabi
 		return actualExtent;
 	}
 }
-VkShaderModule VulkanRender::createShaderModule(const std::vector<char>& code)
+VkShaderModule GameManage::createShaderModule(const std::vector<char>& code)
 {
 	VkShaderModuleCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1493,7 +1465,7 @@ VkShaderModule VulkanRender::createShaderModule(const std::vector<char>& code)
 	return shaderModule;
 }
 
-VkImageView VulkanRender::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+VkImageView GameManage::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 {
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1514,7 +1486,7 @@ VkImageView VulkanRender::createImageView(VkImage image, VkFormat format, VkImag
 	return imageView;
 }
 
-void VulkanRender::loadModel(std::string modelPath, glm::vec3 position)
+void GameManage::loadModel(std::vector<std::string> modelsPath, glm::vec3 position)
 {
 	Model newModel;
 	tinyobj::attrib_t attrib;
@@ -1522,40 +1494,58 @@ void VulkanRender::loadModel(std::string modelPath, glm::vec3 position)
 	std::vector<tinyobj::material_t> materials;
 	std::string warn, err;
 
-	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) {
-		throw std::runtime_error("Failed to load model!");
-	}
+	for (auto modelPath : modelsPath) {
+		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, modelPath.c_str())) {
+			throw std::runtime_error("Failed to load model!");
+		}
+		// 记录当前 vertices 的大小，以便正确索引
+		size_t vertexOffset = vertices.size();
+		std::unordered_map<Vertex, uint32_t, VertexHash> uniqueVertices{};
 
-	std::unordered_map<Vertex, uint32_t, VertexHash> uniqueVertices{};
+		for (const auto& shape : shapes) {
+			for (const auto& index : shape.mesh.indices) {
+				Vertex vertex{};
 
-	for (const auto& shape : shapes) {
-		for (const auto& index : shape.mesh.indices) {
-			Vertex vertex{};
+				vertex.pos = {
+						attrib.vertices[3 * index.vertex_index + 0],
+						attrib.vertices[3 * index.vertex_index + 1],
+						attrib.vertices[3 * index.vertex_index + 2]
+				};
 
-			vertex.pos = {
-					attrib.vertices[3 * index.vertex_index + 0],
-					attrib.vertices[3 * index.vertex_index + 1],
-					attrib.vertices[3 * index.vertex_index + 2]
-			};
+				vertex.texCoord = {
+						attrib.texcoords[2 * index.texcoord_index + 0],
+						1.0f - attrib.texcoords[2 * index.texcoord_index + 1],
+				};
 
-			vertex.texCoord = {
-					attrib.texcoords[2 * index.texcoord_index + 0],
-					1.0f - attrib.texcoords[2 * index.texcoord_index + 1],
-			};
+				vertex.color = { 1.0f, 1.0f, 1.0f };
 
-			vertex.color = { 1.0f, 1.0f, 1.0f };
+				if (uniqueVertices.count(vertex) == 0) {
+					uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+					vertices.push_back(vertex);
+				}
 
-			if (uniqueVertices.count(vertex) == 0) {
-				uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
-				vertices.push_back(vertex);
+				// 使用当前形状的材质（如果模型有材质）
+				if (!materials.empty()) {
+					// 通过形状获取材质ID
+					const int materialIndex = shape.mesh.material_ids[index.vertex_index];
+					// 确保材质索引有效
+					if (materialIndex >= 0 && materialIndex < materials.size()) {
+						const auto& material = materials[materialIndex];
+						vertex.color = {
+							material.diffuse[0],
+							material.diffuse[1],
+							material.diffuse[2]
+						}; // 使用漫反射颜色
+					}
+				}
+
+				indices.push_back(uniqueVertices[vertex] + static_cast<uint32_t>(vertexOffset)); // 更新索引
 			}
-
-			indices.push_back(uniqueVertices[vertex]);
 		}
 	}
 }
 
-void VulkanRender::processInput(GLFWwindow* window)
+void GameManage::processInput(GLFWwindow* window)
 {
 	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 		camera.speedZ = 1.0f;
@@ -1571,7 +1561,7 @@ void VulkanRender::processInput(GLFWwindow* window)
 		camera.speedX = 0.0f;
 }
 
-std::vector<char> VulkanRender::readFile(const std::string& fileName)
+std::vector<char> GameManage::readFile(const std::string& fileName)
 {
 	std::ifstream file(fileName, std::ios::ate | std::ios::binary);
 
@@ -1590,7 +1580,7 @@ std::vector<char> VulkanRender::readFile(const std::string& fileName)
 	return buffer;
 }
 
-bool VulkanRender::checkDeviceExtensionSupport(VkPhysicalDevice dev)
+bool GameManage::checkDeviceExtensionSupport(VkPhysicalDevice dev)
 {
 	uint32_t extensionCount = 0;
 	vkEnumerateDeviceExtensionProperties(dev, nullptr, &extensionCount, nullptr);
@@ -1607,7 +1597,7 @@ bool VulkanRender::checkDeviceExtensionSupport(VkPhysicalDevice dev)
 	return requiredExtensions.empty();
 }
 
-std::vector<const char*> VulkanRender::getRequiredExtensions()
+std::vector<const char*> GameManage::getRequiredExtensions()
 {
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions;
@@ -1618,13 +1608,13 @@ std::vector<const char*> VulkanRender::getRequiredExtensions()
 	return extensions;
 }
 
-void VulkanRender::framebufferResizeCallback(GLFWwindow* window, int width, int height)
+void GameManage::framebufferResizeCallback(GLFWwindow* window, int width, int height)
 {
-	auto app = reinterpret_cast<VulkanRender*>(glfwGetWindowUserPointer(window));
+	auto app = reinterpret_cast<GameManage*>(glfwGetWindowUserPointer(window));
 	app->framebufferResized = true;
 }
 
-void VulkanRender::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
+void GameManage::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
 {
 	createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -1638,7 +1628,7 @@ void VulkanRender::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateI
 }
 
 
-void VulkanRender::createTextureSampler()
+void GameManage::createTextureSampler()
 {
 	VkPhysicalDeviceProperties properties{};
 	vkGetPhysicalDeviceProperties(physicalDevice, &properties);
@@ -1663,7 +1653,7 @@ void VulkanRender::createTextureSampler()
 	}
 }
 
-VkFormat VulkanRender::findDepthFormat()
+VkFormat GameManage::findDepthFormat()
 {
 	return findSupportedFormat(
 		{ VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
@@ -1672,7 +1662,7 @@ VkFormat VulkanRender::findDepthFormat()
 	);
 }
 
-bool VulkanRender::hasStencilComponent(VkFormat format)
+bool GameManage::hasStencilComponent(VkFormat format)
 {
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }

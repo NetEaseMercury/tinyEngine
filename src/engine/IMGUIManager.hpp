@@ -1,9 +1,4 @@
-#include <imgui.h>
-#include <backends/imgui_impl_vulkan.h>
-#include <backends/imgui_impl_glfw.h>
-#include <vector>
-#include <GLFW/glfw3.h>
-#include <string>
+#include "../base/BaseInclude.hpp"
 class UIManager {
 public:
 	UIManager() = default;

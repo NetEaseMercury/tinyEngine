@@ -1,11 +1,7 @@
 
 #ifndef VERTEX
 #define VERTEX
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/hash.hpp>
-#include <array>
-#include <vulkan/vulkan_core.h>
+#include "../base/BaseInclude.hpp"
 
 // 定义顶点信息
 struct Vertex {

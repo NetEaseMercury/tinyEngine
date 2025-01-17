@@ -1,13 +1,6 @@
 #ifndef CAMERA_H
 #define CAMERA_H
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#ifndef GLM_ENABLE_EXPERIMENTAL
-#define GLM_ENABLE_EXPERIMENTAL
-#endif // !GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/hash.hpp>
-
+#include "../base/baseInclude.hpp"
 #define M_PI 3.14159265358979323846
 
 // 相机方向
@@ -17,9 +10,6 @@ enum Movement {
     LEFT,
     RIGHT
 };
-
-
-
 
 class Camera
 {

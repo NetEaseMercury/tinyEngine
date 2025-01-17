@@ -6,9 +6,9 @@
 /// <summary>
 /// vulkan引擎基类
 /// </summary>
-class VulkanRenderBase {
+class GameManageBase {
 public:
-	virtual ~VulkanRenderBase() {}
+	virtual ~GameManageBase() {}
 	/// <summary>
 	/// 引擎开始运行逻辑，包含变量参数初始化等
 	/// </summary>
@@ -23,7 +23,7 @@ public:
 	/// 模型加载，用于获取模型的顶点信息
 	/// </summary>
 	/// <param name="modelPath"></param>
-	virtual void loadModel(std::string modelPath, glm::vec3 position) = 0;
+	virtual void loadModel(std::vector<std::string> modelPath, glm::vec3 position) = 0;
 	
 	/// <summary>
 	/// 引擎主循环函数
@@ -31,7 +31,7 @@ public:
 	virtual void gameLoop() = 0;
 
 	/// <summary>
-	/// 引擎初始化函数，用于Vulkan引擎及其他库初始化
+	/// 引擎初始化函数，用于引擎及其他库初始化
 	/// </summary>
 	virtual void initEngine() = 0;
 };

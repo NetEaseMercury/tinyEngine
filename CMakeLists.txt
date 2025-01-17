@@ -14,23 +14,24 @@ add_subdirectory(thirdParty/glm)
 # add Vulkan
 find_package(Vulkan REQUIRED)
 
-# imgui不是标准cmake工程，需要手动配置头文件
+# imgui/assimp不是标准cmake工程，需要手动配置头文件
 file(GLOB_RECURSE IMGUI_SRCS thirdParty/imgui/*.cpp thirdParty/imgui/*.h)
-
+file(GLOB_RECURSE assimp_SRCS thirdParty/assimp/*.cpp thirdParty/assimp/*.h )
 
 file(GLOB_RECURSE SOURCE src/*.cpp src/*.hpp src/*.h)
 # 将源代码添加到此项目的可执行文件。
 add_executable(${PROJECT_NAME}
     ${SOURCE}
     ${IMGUI_SRCS}
-
-)
+    ${assimp_SRCS}
+    )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/glfw/include
                 thirdParty/stb
                 thirdParty/tinyobjloader
                 thirdParty/imgui
+                thirdParty/assimp
                 thirdParty/stb_image
         )
 
