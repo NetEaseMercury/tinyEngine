@@ -9,7 +9,6 @@
 #include "vulkan/vulkan_core.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
-#include "vk_mem_alloc.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
@@ -18,7 +17,6 @@
 #include <optional>
 #include <vector>
 #include <iostream>
-#include "vectex.hpp"
 #include <unordered_map>
 #include <set>
 #include <array>

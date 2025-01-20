@@ -1,29 +1,13 @@
 #pragma once
-#include "../base/BaseInclude.hpp"
-#include "camera.hpp"
 
-#define WIDTH 1280 
-#define HEIGHT 720
+#include "InputManager.h"
 
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
+#include "vk_mem_alloc.h"
 
-const std::vector<const char*> debugInstanceExtensions = {
-		VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-};
-const std::vector<const char*> validationLayers = {
-		"VK_LAYER_KHRONOS_validation",
-		"VK_LAYER_LUNARG_monitor"
-};
+#include <optional>
+#include <vector>
 
-const std::vector<const char*> deviceExtensions = {
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
-
-const int MAX_FRAMES_IN_FLIGHT = 2;
+struct GLFWwindow;
 
 struct AllocatedImage {
 	VkImage image = VK_NULL_HANDLE;
@@ -37,35 +21,13 @@ struct AllocatedBuffer {
 	VmaAllocation vmaAllocation = 0;
 };
 
-struct QueueFamilyIndices {
-	std::optional<uint32_t> graphicsFamily;
-	std::optional<uint32_t> presentFamily;
-
-	[[nodiscard]] bool hasMandatoryFamilies() const {
-		return graphicsFamily.has_value() && presentFamily.has_value();
-	}
-};
-
-struct SwapChainSupportDetails {
-	VkSurfaceCapabilitiesKHR capabilities;
-	std::vector<VkSurfaceFormatKHR> formats;
-	std::vector<VkPresentModeKHR> presentModes;
-};
-struct Model {
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-	glm::mat4 modelMatrix; // 存储模型的变换矩阵
-	VkBuffer vertexBuffer; // 每个模型的顶点缓冲区
-	VkDeviceMemory vertexBufferMemory; // 顶点缓冲区的设备内存
-	VkBuffer indexBuffer; // 每个模型的索引缓冲区
-	VkDeviceMemory indexBufferMemory; // 索引缓冲区的设备内存
-};
-
-
-// move vulkan init to VulkanInstance
-class VulkanInstance {
-
+/*
+* Initializes swap chain, surface and logical device.
+*/
+class VulkanInstance
+{
 public:
+	// Vulkan instance properties that should be shared with renderers
 	struct Properties {
 		VkFormat swapChainImageFormat = VK_FORMAT_UNDEFINED;
 		VkExtent2D swapChainExtent = { 0 };
@@ -73,14 +35,25 @@ public:
 		float maxSamplerAnisotropy = 0.f;
 	};
 
-	VulkanInstance() = default;
-	// 将以前vulkan 初始化相关API封装一下
+	struct QueueFamilyIndices {
+		std::optional<unsigned int> graphicsFamily;
+		std::optional<unsigned int> presentationFamily;
+		bool hasMandatoryFamilies();
+	};
+
+	struct SwapChainSupportDetails {
+		VkSurfaceCapabilitiesKHR capabilities = { 0 };
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR> presentModes;
+	};
+
 public:
 	void init(GLFWwindow* window);
-	void createSwapChain();
 	void cleanup();
 	void cleanupSwapChain();
 	void recreateSwapChain();
+
+	// Convenience functions used by VulkanRenderer and VulkanInstance
 	void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format,
 		VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, AllocatedImage& image);
 	void copyDataToImage(VkCommandPool commandPool, uint32_t width, uint32_t height, uint32_t nbChannels,
@@ -103,7 +76,7 @@ public:
 		VkImageTiling tiling, VkFormatFeatureFlags features) const;
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 
-	// get class property
+	// Accessors
 	const Properties& getProperties() const;
 	VkDevice& getLogicalDevice();
 	const QueueFamilyIndices& getQueueFamilyIndices() const;
@@ -116,51 +89,43 @@ public:
 	VkPhysicalDevice& getPhysicalDevice();
 	VkInstance& getInstance();
 	size_t getSwapChainSize() const;
+
 private:
-	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice dev);
-	bool isDeviceSuitable(VkPhysicalDevice dev);
-	bool checkDeviceExtensionSupport(VkPhysicalDevice dev);
-	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice dev);
-	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
-	VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
-	VkCommandBufferAllocateInfo createCommandBufferAllocateInfo(VkCommandPool commandPool, uint32_t nbCommandBuffers, VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	SwapChainSupportDetails querySwapChainSupportDetails(VkPhysicalDevice device);
+	// Device
+	int _ratePhysicalDevice(VkPhysicalDevice device, QueueFamilyIndices& indices, SwapChainSupportDetails& swapChainSupportDetails);
+	QueueFamilyIndices _findRequiredQueueFamilies(VkPhysicalDevice device);
+	bool _areDeviceRequiredExtensionsSupported(VkPhysicalDevice device);
+	SwapChainSupportDetails _querySwapChainSupportDetails(VkPhysicalDevice device);
 
-	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+	// Swap chain
+	void _createSwapChain();
+	VkSurfaceFormatKHR _chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
+	VkPresentModeKHR _chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+	VkExtent2D _chooseSwapChainExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+	VkSampleCountFlagBits _getMaxUsableSampleCount() const;
 
-	static std::vector<const char*> getRequiredExtensions();
-
-
-	GLFWwindow*					window = nullptr;
-	VkInstance					vulkan = VK_NULL_HANDLE;
-	VkDebugUtilsMessengerEXT	debugMessenger = VK_NULL_HANDLE;
-	VkSurfaceKHR				surface = VK_NULL_HANDLE;
+private:
+	GLFWwindow* _window = nullptr;
+	VkInstance _vulkan = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT _debugMessenger = VK_NULL_HANDLE;
+	VkSurfaceKHR _surface = VK_NULL_HANDLE;
 
 	// Device
-	VkPhysicalDevice			physicalDevice = VK_NULL_HANDLE;
-	VkPhysicalDeviceProperties	physicalDeviceProperties = {};
-	QueueFamilyIndices			queueFamilyIndices;
-	SwapChainSupportDetails		swapChainSupportDetails;
-	VkDevice					device = VK_NULL_HANDLE;
-	VkQueue						graphicsQueue = VK_NULL_HANDLE;
-	VkQueue						presentationQueue = VK_NULL_HANDLE;
-								
-	// Swap chain				
-	VkSwapchainKHR				swapChain = VK_NULL_HANDLE;
-	std::vector<VkImage>		swapChainImages;
-	std::vector<VkImageView>	swapChainImageViews;
+	VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
+	VkPhysicalDeviceProperties _physicalDeviceProperties = {};
+	QueueFamilyIndices _queueFamilyIndices;
+	SwapChainSupportDetails _swapChainSupportDetails;
+	VkDevice _device = VK_NULL_HANDLE;
+	VkQueue _graphicsQueue = VK_NULL_HANDLE;
+	VkQueue _presentationQueue = VK_NULL_HANDLE;
+
+	// Swap chain
+	VkSwapchainKHR _swapChain = VK_NULL_HANDLE;
+	std::vector<VkImage> _swapChainImages;
+	std::vector<VkImageView> _swapChainImageViews;
 
 	// Allocator
-	VmaAllocator				allocator;
+	VmaAllocator _allocator;
 
-	Properties					properties;
-
-
-	// error check
-	void VK_CHECK(VkResult err) {
-		
-		if (err) {
-			throw std::runtime_error(std::to_string(err));
-		}
-	}
+	Properties _properties;
 };

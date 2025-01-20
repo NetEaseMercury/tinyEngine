@@ -16,14 +16,17 @@ find_package(Vulkan REQUIRED)
 
 # imgui/assimp不是标准cmake工程，需要手动配置头文件
 file(GLOB_RECURSE IMGUI_SRCS thirdParty/imgui/*.cpp thirdParty/imgui/*.h)
-file(GLOB_RECURSE assimp_SRCS thirdParty/assimp/*.cpp thirdParty/assimp/*.h )
-
-file(GLOB_RECURSE SOURCE src/*.cpp src/*.hpp src/*.h)
+file(GLOB_RECURSE assimp_SRCS thirdParty/assimp/*.cpp thirdParty/assimp/*.h thirdParty  assimp/*.hpp)
+file(GLOB_RECURSE spirvReflect_SRCS thirdParty/spirv-reflect/*.c thirdParty/spirv-reflect/*.cpp thirdParty/spirv-reflect/*.h thirdParty/spirv-reflect/*.hpp)
+file(GLOB_RECURSE stbImage_SRCS thirdParty/stb_image/*.h)
+file(GLOB_RECURSE SOURCE src/scene/*.cpp src/scene/*.hpp src/scene/*.h src/IMGUI/*.hpp src/IMGUI/*.cpp src/engine/*.h src/engine/*.hpp src/engine/*.cpp src/*.h src/*.cpp)
 # 将源代码添加到此项目的可执行文件。
 add_executable(${PROJECT_NAME}
     ${SOURCE}
     ${IMGUI_SRCS}
     ${assimp_SRCS}
+    ${spirvReflect_SRCS}
+    ${stbImage_SRCS}
     )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -33,6 +36,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/imgui
                 thirdParty/assimp
                 thirdParty/stb_image
+                thirdParty/spirv-reflect
         )
 
 
@@ -46,23 +50,28 @@ add_definitions(-DGLEW_STATIC)
 
 # 拷贝资源
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/res")
+set(SOURCE_LIBS "${CMAKE_SOURCE_DIR}/")
+set(SOURCE_FILE_ASSIMP  "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.lib" "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.exp")
+set(SOURCE_FILE_MEMORYALLOCATOR "${CMAKE_SOURCE_DIR}/thirdParty/libs/VulkanMemoryAllocator.lib")
 set(DESTINATION_DIR "${CMAKE_BINARY_DIR}")
-file(COPY ${SOURCE_DIR} DESTINATION ${DESTINATION_DIR})
+file(COPY ${SOURCE_DIR} ${SOURCE_FILE_ASSIMP} ${SOURCE_FILE_MEMORYALLOCATOR} DESTINATION ${DESTINATION_DIR})
 
+link_directories("${CMAKE_SOURCE_DIR}/thirdParty/libs/")
 target_link_libraries(${PROJECT_NAME}
         Vulkan::Vulkan
         glfw ${GLFW_LIBRARIES}
-        glm::glm
+        glm::glm    
+        assimp-vc140-mt
         )
-
 target_compile_definitions(${PROJECT_NAME} PRIVATE
         GLM_FORCE_DEPTH_ZERO_TO_ONE
         GLM_FORCE_RADIANS
         GLM_ENABLE_EXPERIMENTAL
         GLFW_INCLUDE_VULKAN
-        STB_IMAGE_IMPLEMENTATION
         TINYOBJLOADER_IMPLEMENTATION
         )
+
+
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET tinyEngine PROPERTY CXX_STANDARD 20)
 endif()
