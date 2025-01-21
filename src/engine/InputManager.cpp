@@ -53,28 +53,28 @@ bool InputManager::processInput()
         _oPressed = true;
     else if (glfwGetKey(_window, GLFW_KEY_O) == GLFW_RELEASE && _oPressed) {
         _oPressed = false;
-        _updateApplicationState(ApplicationToggle::OCCLUSION_CULLING);
+        updateApplicationState(ApplicationToggle::OCCLUSION_CULLING);
     }
 
     if (glfwGetKey(_window, GLFW_KEY_F) == GLFW_PRESS && !_fPressed)
         _fPressed = true;
     else if (glfwGetKey(_window, GLFW_KEY_F) == GLFW_RELEASE && _fPressed) {
         _fPressed = false;
-        _updateApplicationState(ApplicationToggle::FRUSTUM_CULLING);
+        updateApplicationState(ApplicationToggle::FRUSTUM_CULLING);
     }
 
     if (glfwGetKey(_window, GLFW_KEY_T) == GLFW_PRESS && !_tPressed)
         _tPressed = true;
     else if (glfwGetKey(_window, GLFW_KEY_T) == GLFW_RELEASE && _tPressed) {
         _tPressed = false;
-        _updateApplicationState(ApplicationToggle::MAKE_ALL_OBJECTS_TRANSPARENT);
+        updateApplicationState(ApplicationToggle::MAKE_ALL_OBJECTS_TRANSPARENT);
     }
 
     if (glfwGetKey(_window, GLFW_KEY_L) == GLFW_PRESS && !_lPressed)
         _lPressed = true;
     else if (glfwGetKey(_window, GLFW_KEY_L) == GLFW_RELEASE && _lPressed) {
         _lPressed = false;
-        _updateApplicationState(ApplicationToggle::LOCK_FRUSTUM_CULLING_CAMERA);
+        updateApplicationState(ApplicationToggle::LOCK_FRUSTUM_CULLING_CAMERA);
     }
 
     // Closing window if needed
@@ -131,7 +131,7 @@ void InputManager::_updateApplicationCamera(CameraMovement direction, float delt
     }
 }
 
-void InputManager::_updateApplicationState(ApplicationToggle toggle)
+void InputManager::updateApplicationState(ApplicationToggle toggle)
 {
     switch (toggle) {
     case ApplicationToggle::OCCLUSION_CULLING:

@@ -17,6 +17,8 @@ public:
 	bool getFrustumCullingState();
 	bool getOcclusionCullingState();
 	std::string getScenePath();
+	void getZDistance(float& zNear, float& zFar);
+	void getCullingState(bool& enableFrus, bool& enableOC);
 private:
 	void setIMGUIVulkanWindow(ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height);
 	void FrameRender(ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data);
@@ -39,11 +41,11 @@ private:
 	GLFWwindow* window = nullptr;
 	VkSurfaceKHR surface;
 	bool refreshVulkanRender = false;
-	float zNear = 1.0f;
-	float zFar = 100.0f;
+	float _zNear = 0.1f;
+	float _zFar = 300.0f;
 	int currentIndex = 0;
 	bool frustumCulling = true;
 	bool occlusionCulling = true;
 
-	std::string scenePath;
+	std::string scenePath = "res/Models/Sponza/super_sponza.scene";
 };

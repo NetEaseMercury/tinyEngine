@@ -22,7 +22,7 @@ private:
 		UP,
 		DOWN
 	};
-
+public:
 	enum class ApplicationToggle {
 		FRUSTUM_CULLING,
 		OCCLUSION_CULLING,
@@ -38,10 +38,10 @@ public:
 	void setCamera(leoscene::Camera* camera);
 	bool processInput();
 	void processMouseMovement(float xoffset, float yoffset);
-
+	void updateApplicationState(ApplicationToggle toggle);
 private:
 	void _updateApplicationCamera(CameraMovement direction, float deltaTime);
-	void _updateApplicationState(ApplicationToggle toggle);
+
 
 private:
 	static void _mouseCallback(GLFWwindow* window, double xpos, double ypos);

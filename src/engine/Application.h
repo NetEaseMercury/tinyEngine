@@ -43,6 +43,7 @@ public:
 	void unloadScene();
 	int start();
 	void cleanup();
+	void refreshScene();
 private:
 	std::unique_ptr<VulkanRenderer> _renderer;
 	std::unique_ptr<InputManager> _inputManager;
@@ -54,5 +55,6 @@ private:
 	std::unique_ptr<leoscene::SceneLoader> sceneLoader;
 	bool _refreshState = false;
 	std::string scenePath;
+	bool frusCulling = true, occlusionCulling = true;
 };
 

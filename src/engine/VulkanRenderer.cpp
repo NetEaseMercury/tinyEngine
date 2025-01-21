@@ -1205,14 +1205,12 @@ void VulkanRenderer::unloadSceneFromDevice()
     _materialImagesSamplers.clear();
 
     for (auto& imageData : _materialImagesData) {
-        // 假设 AllocatedImage 有一个 destroy 方法来释放其资源
         imageData.release();
     }
     _materialImagesData.clear();
 
     // 释放形状数据
     for (auto& shapeDataPtr : _shapeData) {
-        // 假设 ShapeData 有一个 destroy 方法来释放其资源
         shapeDataPtr.release();
     }
     _shapeData.clear();

@@ -266,6 +266,18 @@ std::string UIManager::getScenePath()
     return scenePath;
 }
 
+void UIManager::getZDistance(float& zNear, float& zFar)
+{
+    zNear = _zNear;
+    zFar = _zFar;
+}
+
+void UIManager::getCullingState(bool& enableFrus, bool& enableOC)
+{
+    enableFrus = frustumCulling;
+    enableOC = occlusionCulling;
+}
+
 bool UIManager::getVulkanRefreshState()
 {
     return refreshVulkanRender;
@@ -301,19 +313,23 @@ void UIManager::startNewFrame()
     )";
     ImGui::Text(prompt.c_str());  
 
-    ImGui::SliderFloat("Camera zNear", &zNear, 0.0f, 10.0f);
-    ImGui::SliderFloat("Camera zFar", &zFar, 10.0f, 1000.0f);
+    ImGui::SliderFloat("Camera zNear", &_zNear, 0.0f, 10.0f);
+    ImGui::SliderFloat("Camera zFar", &_zFar, 10.0f, 1000.0f);
 
     ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
 
     if (ImGui::Checkbox("enable frustumCulling", &frustumCulling)) {
         // 当复选框状态改变时执行的代码
-        frustumCulling = !frustumCulling;
+        setVulkanRefreshStatu(true);
     }
 
     if (ImGui::Checkbox("enable occlusionCulling", &occlusionCulling)) {
-        occlusionCulling = !occlusionCulling;
+        setVulkanRefreshStatu(true);
+    }
+
+    if (ImGui::Button("refresh diantance")) {
+        setVulkanRefreshStatu(true);
     }
     // 创建一个静态变量来存储选中项的索引
     static int selectedIndex = 0;

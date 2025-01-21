@@ -51,7 +51,7 @@ add_definitions(-DGLEW_STATIC)
 # 拷贝资源
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/res")
 set(SOURCE_LIBS "${CMAKE_SOURCE_DIR}/")
-set(SOURCE_FILE_ASSIMP  "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.lib" "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.exp")
+set(SOURCE_FILE_ASSIMP  "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.lib" "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.exp" "${CMAKE_SOURCE_DIR}/thirdParty/libs/assimp-vc140-mt.dll")
 set(SOURCE_FILE_MEMORYALLOCATOR "${CMAKE_SOURCE_DIR}/thirdParty/libs/VulkanMemoryAllocator.lib")
 set(DESTINATION_DIR "${CMAKE_BINARY_DIR}")
 file(COPY ${SOURCE_DIR} ${SOURCE_FILE_ASSIMP} ${SOURCE_FILE_MEMORYALLOCATOR} DESTINATION ${DESTINATION_DIR})

@@ -77,6 +77,28 @@ void GameManage::cleanup()
     _vulkan->cleanup();
 }
 
+void GameManage::refreshScene()
+{
+    float zNear, zFar;
+    _ui->getZDistance(zNear, zFar);
+    _renderer->setZFarDistance(zFar);
+    _renderer->setZNearDistance(zNear);
+    bool enableFrus, enableOC;
+    _ui->getCullingState(enableFrus, enableOC);
+    if (enableFrus != frusCulling) {
+        _inputManager->updateApplicationState(InputManager::ApplicationToggle::FRUSTUM_CULLING);
+        frusCulling = enableFrus;
+    }
+    if (enableOC != occlusionCulling) {
+        _inputManager->updateApplicationState(InputManager::ApplicationToggle::OCCLUSION_CULLING);
+        occlusionCulling = enableOC;
+    }
+    _renderer->cleanup();
+    _renderer->init();
+    unloadScene();
+    loadScene(_ui.get()->getScenePath());
+}
+
 int GameManage::loadScene(const std::string& filePath)
 {
     leoscene::Scene scene;
@@ -120,13 +142,10 @@ int GameManage::start()
             _ui->startNewFrame();
             if (_ui.get()->getVulkanRefreshState()) {
                 try {
-                    _renderer->cleanup();
-                    _renderer->init();
-                    unloadScene();
-                    loadScene(_ui.get()->getScenePath());
+                    refreshScene();
                 }
                 catch (const VulkanRendererException& e) {
-
+                    std::cerr << e.what() << std::endl;
                 }
                 _ui.get()->setVulkanRefreshStatu(false);
             }
