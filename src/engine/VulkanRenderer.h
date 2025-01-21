@@ -111,11 +111,13 @@ public:
 
 	// Allocate and fill all the scene-related data from the given scene
 	void loadSceneToDevice(const leoscene::Scene* scene);
-
+	void unloadSceneFromDevice();
 	// Reset data that is dependent on the window's dimensions.
 	void cleanupSwapChainDependentObjects();
 	void recreateSwapChainDependentObjects();
 
+	void setZNearDistance(float zNear);
+	void setZFarDistance(float zFar);
 private:
 	void _updateDynamicData();
 	void _drawObjectsCommands(VkCommandBuffer cmd, VkFramebuffer framebuffer);

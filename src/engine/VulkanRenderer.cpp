@@ -271,8 +271,8 @@ void VulkanRenderer::recreateSwapChainDependentObjects()
         VK_CHECK(vkAllocateCommandBuffers(_device, &allocInfo, &frame.commandBuffer));
     }
 
-    _createComputePipeline("resources/shaders/depth_pyramid.spv", _depthPyramidPipeline, _depthPyramidPipelineLayout, _depthPyramidShaderPass);
-    _createComputePipeline("resources/shaders/indirect_cull.spv", _cullingPipeline, _cullingPipelineLayout, _cullShaderPass);
+    _createComputePipeline("res/shaders/depth_pyramid.spv", _depthPyramidPipeline, _depthPyramidPipelineLayout, _depthPyramidShaderPass);
+    _createComputePipeline("res/shaders/indirect_cull.spv", _cullingPipeline, _cullingPipelineLayout, _cullShaderPass);
 
     _createDepthSampler();
     _createDepthPyramid();
@@ -281,6 +281,16 @@ void VulkanRenderer::recreateSwapChainDependentObjects()
     _createDepthPyramidDescriptors();
 
     _createBarriers();
+}
+
+void VulkanRenderer::setZNearDistance(float zNear)
+{
+    _zNear = zNear;
+}
+
+void VulkanRenderer::setZFarDistance(float zFar)
+{
+    _zFar = zFar;
 }
 
 void VulkanRenderer::init()
@@ -808,6 +818,10 @@ void VulkanRenderer::loadSceneToDevice(const leoscene::Scene* scene)
         const leoscene::Shape* shape = nullptr;
         const leoscene::Transform* transform = nullptr;
     };
+
+    if (_sceneLoaded) {
+        return;
+    }
     std::map<const Material*, std::map<const ShapeData*, std::vector<_ObjectInstanceData>>> objectInstances;
 
     {
@@ -1181,6 +1195,39 @@ void VulkanRenderer::loadSceneToDevice(const leoscene::Scene* scene)
     _updateDynamicData();
 
     _sceneLoaded = true;
+}
+
+void VulkanRenderer::unloadSceneFromDevice()
+{
+    for (auto& sampler : _materialImagesSamplers) {
+        vkDestroySampler(_device, sampler, nullptr);
+    }
+    _materialImagesSamplers.clear();
+
+    for (auto& imageData : _materialImagesData) {
+        // 假设 AllocatedImage 有一个 destroy 方法来释放其资源
+        imageData.release();
+    }
+    _materialImagesData.clear();
+
+    // 释放形状数据
+    for (auto& shapeDataPtr : _shapeData) {
+        // 假设 ShapeData 有一个 destroy 方法来释放其资源
+        shapeDataPtr.release();
+    }
+    _shapeData.clear();
+
+    // 清空绘制调用
+    _drawCalls.clear();
+
+    // 释放对象数据缓冲区
+    _vulkan->destroyBuffer(_objectsDataBuffer);
+    _vulkan->destroyBuffer(_gpuBatches);
+    _vulkan->destroyBuffer(_gpuResetBatches);
+    _vulkan->destroyBuffer(_gpuObjectInstances);
+    _vulkan->destroyBuffer(_gpuIndexToObjectId);
+    _vulkan->destroyBuffer(_gpuCullingGlobalData);
+    _sceneLoaded = false; // 更新场景状态
 }
 
 void VulkanRenderer::_createGlobalDescriptors(uint32_t _totalInstancesNb)

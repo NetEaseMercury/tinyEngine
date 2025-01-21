@@ -9,6 +9,8 @@
 #include "VulkanInstance.h"
 #include "VulkanRenderer.h"
 #include <string>
+#include "../IMGUI/IMGUIManager.hpp"
+#include "../scene/SceneLoader.h"
 namespace leoscene {
 	class Scene;
 }
@@ -38,9 +40,9 @@ public:
 public:
 	int init();
 	int loadScene(const std::string& filePath);
+	void unloadScene();
 	int start();
 	void cleanup();
-
 private:
 	std::unique_ptr<VulkanRenderer> _renderer;
 	std::unique_ptr<InputManager> _inputManager;
@@ -48,5 +50,9 @@ private:
 	std::unique_ptr<leoscene::Camera> _camera;
 	std::unique_ptr<Window> _window;
 	std::unique_ptr<ApplicationState> _state;
+	std::unique_ptr<UIManager> _ui;
+	std::unique_ptr<leoscene::SceneLoader> sceneLoader;
+	bool _refreshState = false;
+	std::string scenePath;
 };
 

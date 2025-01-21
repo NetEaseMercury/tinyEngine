@@ -29,7 +29,7 @@ namespace leoscene {
 	public:
 		const Model loadModel(const char* filePath, LoadingOptions options = {});
 		const Model loadSphereModel(uint32_t xSegments, uint32_t ySegments, LoadingOptions options = {});
-
+		void unloadModel();
 	private:
 		void _processNode(
 			aiNode* node,

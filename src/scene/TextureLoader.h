@@ -15,7 +15,7 @@ namespace leoscene {
 
 	public:
 		std::shared_ptr<ImageTexture> loadTexture(const char* filePath, TextureLoader::LoadingOptions options = {});
-
+		void unloadTexture();
 	private:
 		std::unordered_map<std::string, std::shared_ptr<ImageTexture>> _fileTexturesCache;
 	};

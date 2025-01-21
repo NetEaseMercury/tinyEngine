@@ -19,6 +19,8 @@ GameManage::GameManage()
     _inputManager = std::make_unique<InputManager>();
     _state = std::make_unique<ApplicationState>();
     _camera = std::make_unique<leoscene::Camera>(glm::vec3(0, -3, 0), glm::vec3(1, 0, 0), glm::vec3(0, -1, 0), glm::radians(90.f));
+    _ui = std::make_unique<UIManager>();
+    sceneLoader = std::make_unique<leoscene::SceneLoader>();
 }
 
 GameManage::~GameManage() = default;
@@ -53,6 +55,19 @@ int GameManage::init()
         return -1;
     }
 
+    try
+    {
+        _ui->setVulkanInstance(_vulkan.get()->getInstance(), nullptr);
+        _ui->setPhysicalDevice(_vulkan.get()->getLogicalDevice(), _vulkan.get()->getPhysicalDevice());
+        _ui->initIMGUI();
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << e.what() << std::endl;
+        std::cerr << "Error: Failed to initialize IMGUI." << std::endl;
+        return -1;
+    }
+
     return 0;
 }
 
@@ -65,10 +80,10 @@ void GameManage::cleanup()
 int GameManage::loadScene(const std::string& filePath)
 {
     leoscene::Scene scene;
-    leoscene::SceneLoader sceneLoader;
+
 
     try {
-        sceneLoader.loadScene(filePath.c_str(), &scene, _camera.get());
+        sceneLoader.get()->loadScene(filePath.c_str(), &scene, _camera.get());
     }
     catch (leoscene::SceneLoaderException e) {
         std::cerr << e.what() << std::endl;
@@ -86,11 +101,35 @@ int GameManage::loadScene(const std::string& filePath)
     return 0;
 }
 
+void GameManage::unloadScene()
+{
+    try {
+        sceneLoader.get()->cleanScene();
+        _renderer->unloadSceneFromDevice();
+    }
+    catch (VulkanRendererException e) {
+        std::cerr << e.what() << std::endl;
+    }
+}
+
 int GameManage::start()
 {
     try {
         while (_inputManager->processInput()) {
             _renderer->drawFrame();
+            _ui->startNewFrame();
+            if (_ui.get()->getVulkanRefreshState()) {
+                try {
+                    _renderer->cleanup();
+                    _renderer->init();
+                    unloadScene();
+                    loadScene(_ui.get()->getScenePath());
+                }
+                catch (const VulkanRendererException& e) {
+
+                }
+                _ui.get()->setVulkanRefreshStatu(false);
+            }
         }
     } catch (const VulkanRendererException& e) {
         std::cerr << "Vulkan renderer error: " << e.what() << std::endl;

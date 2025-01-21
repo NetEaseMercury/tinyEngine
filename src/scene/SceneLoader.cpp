@@ -75,6 +75,11 @@ namespace leoscene {
 		}
 	}
 
+	void SceneLoader::cleanScene()
+	{
+		_modelLoader.unloadModel();
+	}
+
 	void SceneLoader::_loadModelEntry(
 		std::stringstream& entry,
 		std::unordered_map<std::string, Model>& models,

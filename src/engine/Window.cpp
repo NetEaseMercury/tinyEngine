@@ -22,7 +22,7 @@ int Window::init()
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height), "LeoEngine", nullptr, nullptr);
+    window = glfwCreateWindow(static_cast<int>(width), static_cast<int>(height), "TinyEngine", nullptr, nullptr);
 
     if (!window) {
         glfwTerminate();

@@ -139,6 +139,13 @@ namespace leoscene {
         return model;
     }
 
+    void ModelLoader::unloadModel()
+    {
+        _modelsCache.clear();
+        _spheresCache.clear();
+        _textureLoader.unloadTexture();
+    }
+
     void ModelLoader::_processNode(
         aiNode* node,
         const aiScene* aiScene,

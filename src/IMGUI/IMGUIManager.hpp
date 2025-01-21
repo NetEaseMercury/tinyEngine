@@ -12,18 +12,11 @@ public:
 	void cleanUp();
 	void startNewFrame();
 	void setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
-	bool refreshVulkanShader();
-	float getSpeed();
-	void setRefreshVulkanStatus(bool status);
-	void setModelDefaultPath();
-public:
-
-	std::string vertexShaderPath;
-	std::string fragShaderPath;
-	std::string modelPath;
-	std::string texturePath;
-public:
-	float speed;
+	bool getVulkanRefreshState();
+	void setVulkanRefreshStatu(bool status);
+	bool getFrustumCullingState();
+	bool getOcclusionCullingState();
+	std::string getScenePath();
 private:
 	void setIMGUIVulkanWindow(ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height);
 	void FrameRender(ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data);
@@ -46,16 +39,11 @@ private:
 	GLFWwindow* window = nullptr;
 	VkSurfaceKHR surface;
 	bool refreshVulkanRender = false;
+	float zNear = 1.0f;
+	float zFar = 100.0f;
+	int currentIndex = 0;
+	bool frustumCulling = true;
+	bool occlusionCulling = true;
 
-	char VertexShaderPath[1024];
-	char FragShdaerPath[1024];
-	char ModelPath[1024];
-	char TexturePath[1024];
-
-	char currentVertexShaderPath[1024];
-	char currentFragShdaerPath[1024];
-	char currentModelPath[1024];
-	char currentTexturePath[1024];
-
-	int currentIndex = -1;
+	std::string scenePath;
 };

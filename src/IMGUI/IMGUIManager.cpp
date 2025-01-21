@@ -246,38 +246,29 @@ void UIManager::setVulkan()
     }
 }
 
-void UIManager::setRefreshVulkanStatus(bool status)
+void UIManager::setVulkanRefreshStatu(bool status)
 {
     refreshVulkanRender = status;
 }
 
-void UIManager::setModelDefaultPath()
+bool UIManager::getFrustumCullingState()
 {
-    char currentPath[1024];
-    if (getcwd(currentPath, sizeof(currentPath))) {
-        snprintf(VertexShaderPath, sizeof(VertexShaderPath), "%s/res/shaders/", currentPath);
-        snprintf(FragShdaerPath, sizeof(FragShdaerPath), "%s/res/shaders/", currentPath);
-        snprintf(ModelPath, sizeof(ModelPath), "%s/res/models/", currentPath);
-        snprintf(TexturePath, sizeof(TexturePath), "%s/res/textures/", currentPath);
-        snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
-        snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
-        snprintf(currentModelPath, sizeof(currentModelPath), "%scyber_room.obj", ModelPath);
-        snprintf(currentTexturePath, sizeof(currentTexturePath), "%scyber_room.png", TexturePath);
-        vertexShaderPath = convertBackslashes(currentVertexShaderPath);
-        fragShaderPath = convertBackslashes(currentFragShdaerPath);
-        modelPath = convertBackslashes(currentModelPath);
-        texturePath = convertBackslashes(currentTexturePath);
-    }
+    return frustumCulling;
 }
 
-bool UIManager::refreshVulkanShader()
+bool UIManager::getOcclusionCullingState()
+{
+    return occlusionCulling;
+}
+
+std::string UIManager::getScenePath()
+{
+    return scenePath;
+}
+
+bool UIManager::getVulkanRefreshState()
 {
     return refreshVulkanRender;
-}
-
-float UIManager::getSpeed()
-{
-    return speed;
 }
 
 void UIManager::startNewFrame()
@@ -305,19 +296,30 @@ void UIManager::startNewFrame()
 
     ImGui::Begin("tinyEngineOperationWindow"); 
     std::string prompt= R"(
-        You can move by pressing w, a, s, d. 
-        You can press and hold the right mouse button to rotate the view.
+        You can move by pressing w, a, s, d.
+        You can move by pressing Space to Up, shift to Down. 
     )";
-    ImGui::Text(prompt.c_str());              
-    ImGui::SliderFloat("Camera Move Speed", &speed, 0.0f, 1.0f);
+    ImGui::Text(prompt.c_str());  
+
+    ImGui::SliderFloat("Camera zNear", &zNear, 0.0f, 10.0f);
+    ImGui::SliderFloat("Camera zFar", &zFar, 10.0f, 1000.0f);
 
     ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
+
+    if (ImGui::Checkbox("enable frustumCulling", &frustumCulling)) {
+        // 当复选框状态改变时执行的代码
+        frustumCulling = !frustumCulling;
+    }
+
+    if (ImGui::Checkbox("enable occlusionCulling", &occlusionCulling)) {
+        occlusionCulling = !occlusionCulling;
+    }
     // 创建一个静态变量来存储选中项的索引
     static int selectedIndex = 0;
 
     // 定义下拉选项的内容
-    const char* items[] = { "cyberRoom", "fantasyGameInn", "vikingRoom"};
+    const char* items[] = { "Sponza", "Monkey"};
     const int itemCount = IM_ARRAYSIZE(items);
 
     // 创建下拉选项框
@@ -326,33 +328,18 @@ void UIManager::startNewFrame()
         switch (selectedIndex)
         {
         case 0:
-            snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
-            snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
-            snprintf(currentModelPath, sizeof(currentModelPath), "%scyber_room.obj", ModelPath);
-            snprintf(currentTexturePath, sizeof(currentTexturePath), "%scyber_room.png", TexturePath);
-            setRefreshVulkanStatus(true);
+            scenePath.clear();
+            scenePath += "res/Models/Sponza/super_sponza.scene";
+            setVulkanRefreshStatu(true);
             break;
         case 1:
-            snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
-            snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
-            snprintf(currentModelPath, sizeof(currentModelPath), "%sfantasy_game_inn.obj", ModelPath);
-            snprintf(currentTexturePath, sizeof(currentTexturePath), "%sfantasy_game_inn.png", TexturePath);
-            setRefreshVulkanStatus(true);
-            break;
-        case 2:
-            snprintf(currentVertexShaderPath, sizeof(currentVertexShaderPath), "%svert.spv", VertexShaderPath);
-            snprintf(currentFragShdaerPath, sizeof(currentFragShdaerPath), "%sfrag.spv", FragShdaerPath);
-            snprintf(currentModelPath, sizeof(currentModelPath), "%sviking_room.obj", ModelPath);
-            snprintf(currentTexturePath, sizeof(currentTexturePath), "%sviking_room.png", TexturePath);
-            setRefreshVulkanStatus(true);
+            scenePath.clear();
+            scenePath += "res/Models/Monkey/super_monkey.scene";
+            setVulkanRefreshStatu(true);
             break;
         default:
             break;
         }
-        vertexShaderPath = convertBackslashes(currentVertexShaderPath);
-        fragShaderPath = convertBackslashes(currentFragShdaerPath);
-        modelPath = convertBackslashes(currentModelPath);
-        texturePath = convertBackslashes(currentTexturePath);
         currentIndex = selectedIndex;
     }
 

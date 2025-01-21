@@ -20,8 +20,9 @@ namespace leoscene {
 
 	class SceneLoader {
 	public:
+		SceneLoader() = default;
 		void loadScene(const char* filePath, Scene* scene, Camera* camera);
-		
+		void cleanScene();
 	private:
 		void _loadModelEntry(
 			std::stringstream& entry,

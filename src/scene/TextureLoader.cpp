@@ -58,6 +58,11 @@ namespace leoscene {
         return _fileTexturesCache[filePath];
     }
 
+    void TextureLoader::unloadTexture()
+    {
+        _fileTexturesCache.clear();
+    }
+
     namespace {
         ImageTexture::Layout pickLayout(TextureLoader::LoadingOptions options, int nbChannels) {
             if (options.forceLayout != ImageTexture::Layout::INVALID) {
