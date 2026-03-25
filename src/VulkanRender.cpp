@@ -134,10 +134,38 @@ void VulkanRender::initVulkan()
 	createTextureImageView();
 	createTextureSampler();
 
-	//载入模型信息
+	// binding=2 ?? normalSampler ???????????????? vkUpdateDescriptorSets ?????? VK_NULL_HANDLE??
+	// ?????????????? normal ?????????????????? texturePath ??? normal ?????????
+	createNormalImage(imGUI->texturePath);
+	normalImageView = createImageView(normalImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+	{
+		VkPhysicalDeviceProperties properties{};
+		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+		VkSamplerCreateInfo samplerInfo{};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.magFilter = VK_FILTER_LINEAR;
+		samplerInfo.minFilter = VK_FILTER_LINEAR;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.anisotropyEnable = VK_TRUE;
+		samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		samplerInfo.compareEnable = VK_FALSE;
+		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+		if (vkCreateSampler(device, &samplerInfo, nullptr, &normalSampler) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create normal sampler!");
+		}
+	}
+
+	//??????????
 	loadModel(imGUI->modelPath, glm::vec3(0,0,0));
 
-	//创建VertexBuffer 和 IndexBuffer
+	//????VertexBuffer ?? IndexBuffer
 	createVertexBuffer();
 	createIndexBuffer();
 
@@ -156,6 +184,11 @@ void VulkanRender::cleanUp()
 
 	vkDestroyImage(device, textureImage, nullptr);
 	vkFreeMemory(device, textureImageMemory, nullptr);
+
+	vkDestroySampler(device, normalSampler, nullptr);
+	vkDestroyImageView(device, normalImageView, nullptr);
+	vkDestroyImage(device, normalImage, nullptr);
+	vkFreeMemory(device, normalImageMemory, nullptr);
 
 	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
@@ -196,7 +229,7 @@ void VulkanRender::createVulkanInstance()
 	createInfo.ppEnabledLayerNames = validationLayers.data();
 	createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 	createInfo.pNext = nullptr;
-	// 获取当前所需扩展
+	// ?????????????
 	auto extensions = getRequiredExtensions();
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
 	createInfo.ppEnabledExtensionNames = extensions.data();
@@ -427,7 +460,14 @@ void VulkanRender::createVulkanDescriptorSetLayout()
 	samplerLayoutBinding.pImmutableSamplers = nullptr;
 	samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
+	VkDescriptorSetLayoutBinding normalSamplerLayoutBinding{};
+	normalSamplerLayoutBinding.binding = 2;
+	normalSamplerLayoutBinding.descriptorCount = 1;
+	normalSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	normalSamplerLayoutBinding.pImmutableSamplers = nullptr;
+	normalSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	std::array<VkDescriptorSetLayoutBinding, 3> bindings = { uboLayoutBinding, samplerLayoutBinding, normalSamplerLayoutBinding };
 	VkDescriptorSetLayoutCreateInfo layoutInfo{};
 	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -444,7 +484,7 @@ void VulkanRender::createVulkanGraphicsPipeline(std::string vertSpv, std::string
 	auto fragShaderCode = readFile(fragSpv);
 
 
-	// 防住路径输错导致奔溃
+	// ??????????????????
 	if (vertShaderCode.empty() || fragShaderCode.empty()) {
 		throw std::runtime_error("Failed to read vertSpv or fragSpv!");
 	}
@@ -667,7 +707,7 @@ void VulkanRender::createTextureImage(std::string texturePath)
 	stbi_uc* pixels = stbi_load(texturePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 	VkDeviceSize imageSize = texWidth * texHeight * 4;
 
-	// 防止路径错误问题
+	// ???????????????
 	if (!pixels) {
 		throw std::runtime_error("Failed to create Texture Image, please check texture path!");
 	}
@@ -693,6 +733,44 @@ void VulkanRender::createTextureImage(std::string texturePath)
 		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 	copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
 	transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+	vkDestroyBuffer(device, stagingBuffer, nullptr);
+	vkFreeMemory(device, stagingBufferMemory, nullptr);
+}
+
+// ????????????????? Vulkan
+void VulkanRender::createNormalImage(std::string normalPath)
+{
+	int texWidth, texHeight, texChannels;
+	stbi_uc* pixels = stbi_load(normalPath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	VkDeviceSize imageSize = texWidth * texHeight * 4; // ???????????RGBA???
+
+	if (!pixels) {
+		throw std::runtime_error("Failed to create Normal Texture Image, please check texture path!");
+	}
+
+	VkBuffer stagingBuffer;
+	VkDeviceMemory stagingBufferMemory;
+	createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		stagingBuffer, stagingBufferMemory);
+
+	void* data;
+	vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+	memcpy(data, pixels, static_cast<size_t>(imageSize));
+	vkUnmapMemory(device, stagingBufferMemory);
+
+	stbi_image_free(pixels);
+
+	createImage(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		normalImage, normalImageMemory);
+
+	transitionImageLayout(normalImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	copyBufferToImage(stagingBuffer, normalImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+	transitionImageLayout(normalImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 	vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -933,7 +1011,12 @@ void VulkanRender::createDescriptorSets()
 		imageInfo.imageView = textureImageView;
 		imageInfo.sampler = textureSampler;
 
-		std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+		VkDescriptorImageInfo normalInfo{};
+		normalInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		normalInfo.imageView = normalImageView;
+		normalInfo.sampler = normalSampler;
+
+		std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
 		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptorWrites[0].dstSet = descriptorSets[i];
 		descriptorWrites[0].dstBinding = 0;
@@ -949,6 +1032,14 @@ void VulkanRender::createDescriptorSets()
 		descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		descriptorWrites[1].descriptorCount = 1;
 		descriptorWrites[1].pImageInfo = &imageInfo;
+
+		descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrites[2].dstSet = descriptorSets[i];
+		descriptorWrites[2].dstBinding = 2;
+		descriptorWrites[2].dstArrayElement = 0;
+		descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		descriptorWrites[2].descriptorCount = 1;
+		descriptorWrites[2].pImageInfo = &normalInfo;
 
 		vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0,
 			nullptr);
@@ -1152,7 +1243,7 @@ void VulkanRender::recreateSwapChain()
 	createVulkanSwapChain();
 	createVulkanImageViews();
 	createVulkanRenderPass();
-	//创建VertexBuffer 和 IndexBuffer
+	//????VertexBuffer ?? IndexBuffer
 	createVertexBuffer();
 	createIndexBuffer();
 
@@ -1164,7 +1255,35 @@ void VulkanRender::recreateSwapChain()
 	createTextureImageView();
 	createTextureSampler();
 
-	//载入模型信息
+	// binding=2 ?? normalSampler ????????Ч????????? vkUpdateDescriptorSets ??д?? VK_NULL_HANDLE??
+	// ?????????е??? normal ???·????????????? texturePath ??? normal ?????????
+	createNormalImage(imGUI->texturePath);
+	normalImageView = createImageView(normalImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+	{
+		VkPhysicalDeviceProperties properties{};
+		vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+
+		VkSamplerCreateInfo samplerInfo{};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+		samplerInfo.magFilter = VK_FILTER_LINEAR;
+		samplerInfo.minFilter = VK_FILTER_LINEAR;
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.anisotropyEnable = VK_TRUE;
+		samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		samplerInfo.compareEnable = VK_FALSE;
+		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+		if (vkCreateSampler(device, &samplerInfo, nullptr, &normalSampler) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create normal sampler!");
+		}
+	}
+
+	//??????????
 	loadModel(imGUI->modelPath, glm::vec3(0,0,0));
 
 	createUniformBuffers();
@@ -1216,10 +1335,10 @@ void VulkanRender::updateUniformBuffer(uint32_t currentImage)
 		glm::vec3(0.0f, 0.0f, 1.0f));
 
 	ubo.view = camera.GetViewMatrix();
+	// 0.1 near clip plane, 500 far clip plane
 	ubo.proj = glm::perspective(glm::radians(45.0f),
 		swapChainExtent.width / static_cast<float>(swapChainExtent.height),
-		0.1f, 10.0f);
-	// 翻转Y轴，原因是GLFW在OpenGL里面和Vulkan表现不一致导致
+		0.1f, 500.0f);
 	ubo.proj[1][1] *= -1;
 
 	void* data;
@@ -1236,7 +1355,6 @@ void VulkanRender::drawFrame()
 
 	VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame],
 		VK_NULL_HANDLE, &imageIndex);
-	// 检查交换链图像是否过期
 	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 		recreateSwapChain();
 		return;
@@ -1244,15 +1362,14 @@ void VulkanRender::drawFrame()
 	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
 		throw std::runtime_error("Failed to acquire swap chain image!");
 	}
-	// 更新 uniform 的内容
+	// ???? uniform ??????
 	updateUniformBuffer(imageIndex);
 
-	// 检查上一个帧是否在使用当前图像
+	// ??????????????????????
 	if (imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
 		vkWaitForFences(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
 	}
 	imagesInFlight[imageIndex] = inFlightFences[currentFrame];
-	// 准备提交渲染命令
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -1265,19 +1382,17 @@ void VulkanRender::drawFrame()
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
 
-	// 提交信号量
 	VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
-	// 重置之前的 fence
 	vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
-	// 提交命令缓冲区到图形队列
+
 	if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to submit draw command buffer!");
 	}
 
-	// 呈现图像
+	// ???????
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
@@ -1292,7 +1407,7 @@ void VulkanRender::drawFrame()
 
 
 	result = vkQueuePresentKHR(presentQueue, &presentInfo);
-	// 检查图像呈现是否成功
+	// ??????????????
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
 		framebufferResized = false;
 		recreateSwapChain();

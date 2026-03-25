@@ -109,6 +109,11 @@ private:
     VkImageView textureImageView{};
     VkSampler textureSampler{};
 
+    VkImage         normalImage{};
+    VkDeviceMemory  normalImageMemory{};
+    VkImageView     normalImageView{};
+    VkSampler       normalSampler{};
+
     std::vector<Vertex> vertices;
     std::vector<uint32_t> indices;
     VkBuffer vertexBuffer{};
@@ -170,7 +175,10 @@ private:
     void createUniformBuffers();
     void createCommandBuffers();
     void createFramebuffers();
+    
     void createTextureImage(std::string texturePath);
+    void createNormalImage(std::string normalPath);
+
     void createTextureImageView();
     void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
         VkImageUsageFlags usage,
@@ -210,7 +218,6 @@ private:
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     VkShaderModule createShaderModule(const std::vector<char>& code);
     VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
-
     // GLFW 输入信息处理
     void processInput(GLFWwindow* window);
     // static functions
