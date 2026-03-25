@@ -13,10 +13,7 @@ layout(binding = 0) uniform UniformBufferObject {
     vec4 boxMaterialTint;
 } ubo;
 
-layout(binding = 1) uniform sampler2D texSampler;
-layout(binding = 2) uniform sampler2D normalSampler;
-
 void main() {
-    vec4 tex = texture(texSampler, fragTexCoord);
-    outColor = vec4(tex.rgb * ubo.materialTint.rgb, tex.a);
+    vec3 base = vec3(0.88, 0.88, 0.90);
+    outColor = vec4(base * ubo.boxMaterialTint.rgb, 1.0);
 }

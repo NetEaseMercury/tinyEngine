@@ -1,4 +1,4 @@
-﻿# CMakeList.txt: tinyEngine 的 CMake 项目，在此处包括源代码并定义
+# CMakeList.txt: tinyEngine 的 CMake 项目，在此处包括源代码并定义
 # 项目特定的逻辑。
 #
 cmake_minimum_required (VERSION 3.8)
@@ -15,15 +15,15 @@ add_subdirectory(thirdParty/glm)
 find_package(Vulkan REQUIRED)
 
 # imgui不是标准cmake工程，需要手动配置头文件
-file(GLOB_RECURSE IMGUI_SRCS thirdParty/imgui/*.cpp thirdParty/imgui/*.h)
+file(GLOB_RECURSE IMGUI_SRCS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/thirdParty/imgui/*.cpp")
 
+# src 下源码：CONFIGURE_DEPENDS 在增删 .cpp 时会触发重新配置，避免链接缺文件
+file(GLOB SOURCE CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
 
-file(GLOB_RECURSE SOURCE src/*.cpp src/*.hpp src/*.h)
-# 将源代码添加到此项目的可执行文件。
 add_executable(${PROJECT_NAME}
     ${SOURCE}
     ${IMGUI_SRCS}
-
+    thirdParty/ImGuizmo/ImGuizmo.cpp
 )
 
 target_include_directories(${PROJECT_NAME} PUBLIC
@@ -32,6 +32,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/tinyobjloader
                 thirdParty/imgui
                 thirdParty/stb_image
+                thirdParty/ImGuizmo
         )
 
 
@@ -43,10 +44,18 @@ get_target_property(TARGET_DIR tinyEngine RUNTIME_OUTPUT_DIRECTORY)
 # 添加预处理命令
 add_definitions(-DGLEW_STATIC)
 
-# 拷贝资源
+# 拷贝资源（configure 时一次 + 每次链接后同步，避免新增 box.spv 等未进输出目录）
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/res")
 set(DESTINATION_DIR "${CMAKE_BINARY_DIR}")
 file(COPY ${SOURCE_DIR} DESTINATION ${DESTINATION_DIR})
+add_custom_command(TARGET tinyEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/res" "$<TARGET_FILE_DIR:tinyEngine>/res"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:tinyEngine>/res/models"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/thirdParty/tinyobjloader/models/no_material.obj"
+        "$<TARGET_FILE_DIR:tinyEngine>/res/models/no_material.obj"
+    COMMENT "Sync res/ next to tinyEngine executable"
+)
 
 target_link_libraries(${PROJECT_NAME}
         Vulkan::Vulkan

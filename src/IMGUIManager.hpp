@@ -1,66 +1,170 @@
+#pragma once
+
 #include <imgui.h>
+
 #include <backends/imgui_impl_vulkan.h>
+
 #include <backends/imgui_impl_glfw.h>
+
 #include <vector>
+
 #include <GLFW/glfw3.h>
+
 #include <string>
+
+#include <cstdint>
+
+class VulkanRender;
+
+/**
+ * @class UIManager
+ * @brief Dear ImGui + ImGui_ImplVulkan/GLFW 封装：负责每帧 UI、与 VulkanRender 的资源/场景联动、ImGuizmo 平移手柄。
+ *
+ * @details 教学流水线：initIMGUI →（每帧）prepareFrame（NewFrame + 面板 + Manipulate + ImGui::Render）→
+ * 录制命令缓冲时在 swapchain 上绘制 ImGui 绘制数据。
+ */
 class UIManager {
+
 public:
+
+	/** @brief 默认构造：成员多为零初始化或空指针 */
 	UIManager() = default;
+
+	/** @brief 虚析构：派生类可重写；当前由 cleanUp 显式释放 ImGui/Vulkan 后端 */
 	virtual ~UIManager() = default;
+
+	/** @brief ImGui 清屏色，可由面板 ColorEdit3 修改并供渲染通路读回 */
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-public:
-	ImGui_ImplVulkanH_Window IMGUIWindowData{};
-public:
+
+	/**
+	 * @brief 创建 ImGui 上下文、绑定 GLFW 与 Vulkan 后端；需在 VulkanRender 已创建 window/device/renderPass 后调用。
+	 */
 	void initIMGUI();
+
+	/**
+	 * @brief 保存 VkInstance 与可选分配器；在 initImGuiVulkanBackend 前必须设置 Instance。
+	 */
 	void setVulkanInstance(const VkInstance& instance, VkAllocationCallbacks* allocator);
+
+	/**
+	 * @brief 销毁 ImGui Vulkan 后端并释放 GLFW 相关；进程退出或重建前应调用。
+	 */
 	void cleanUp();
-	void startNewFrame();
+
+	/**
+	 * @brief 每帧在 drawFrame 录制前调用：NewFrame、业务窗口、ImGuizmo::Manipulate、ImGui::Render。
+	 */
+	void prepareFrame();
+
+	/**
+	 * @brief 交换链重建后：Shutdown ImGui Vulkan 后端并用新的 RenderPass/ImageCount 重新 Init。
+	 */
+	void reloadImGuiVulkanAfterSwapchainRecreate(VulkanRender* render);
+
+	/**
+	 * @brief 设置逻辑设备与物理设备句柄，供 ImGui_ImplVulkan_Init 使用。
+	 */
 	void setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
+
+	/**
+	 * @brief 若返回 true，主循环应触发 recreateSwapChain（例如着色器路径变更）。
+	 */
 	bool refreshVulkanShader();
+
+	/**
+	 * @brief 供外部读回 UI 上的「相机移动速度」滑动条值（0~1 区间由面板限定）。
+	 */
 	float updateSpeed();
+
+	/**
+	 * @brief 设置是否需要在下一帧刷新 Vulkan（与 refreshVulkanShader 读侧配对）。
+	 */
 	void setRefreshVulkanStatus(bool status);
+
+	/**
+	 * @brief 用 exe 旁 res/ 目录填充默认 shader/model/texture 路径字符串缓冲区。
+	 */
 	void setModelDefaultPath();
-public:
 
+	/** @brief 关联场景渲染器，供面板读写选中物体、矩阵与资源路径 */
+	void setVulkanRender(VulkanRender* render) { vulkanRender = render; }
+
+	/** @brief 返回当前清屏颜色（RGBA） */
+	[[nodiscard]] ImVec4 getClearColor() const { return clear_color; }
+
+	/** @brief 当前主模型顶点着色器 SPIR-V 路径（可从面板同步） */
 	std::string vertexShaderPath;
-	std::string fragShaderPath;
-	std::string modelPath;
-	std::string texturePath;
-public:
-	float speed;
-private:
-	void setIMGUIVulkanWindow(ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height);
-	void FrameRender(ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data);
-	void FramePresent(ImGui_ImplVulkanH_Window* wd);
-	void setVulkan();
 
-	VkAllocationCallbacks*   Allocator = nullptr;
-	VkInstance               Instance = VK_NULL_HANDLE;
-	VkPhysicalDevice         PhysicalDevice = VK_NULL_HANDLE;
-	VkDevice                 Device = VK_NULL_HANDLE;
-	uint32_t                 QueueFamily = 0;
-	VkQueue                  Queue = VK_NULL_HANDLE;
-	VkDebugReportCallbackEXT DebugReport = VK_NULL_HANDLE;
-	VkPipelineCache          PipelineCache = VK_NULL_HANDLE;
-	VkDescriptorPool         DescriptorPool = VK_NULL_HANDLE;
-	ImGuiIO g_io;
-	ImGui_ImplVulkanH_Window MainWindowData;
-	int                      MinImageCount = 2;
-	bool					 SwapChainRebuild = false;
+	/** @brief 当前主模型片段着色器 SPIR-V 路径 */
+	std::string fragShaderPath;
+
+	/** @brief 盒子所用片段着色器路径（通常由 frag 路径派生为 box.spv） */
+	std::string boxFragShaderPath;
+
+	/** @brief 当前加载的 OBJ 模型路径 */
+	std::string modelPath;
+
+	/** @brief 当前主纹理路径 */
+	std::string texturePath;
+
+	/** @brief UI 相机速度滑动条的内部值，默认 0.5 */
+	float speed = 0.5f;
+
+private:
+
+	/** @brief 根据 fragShaderPath 生成 boxFragShaderPath（frag.spv → box.spv） */
+	void syncBoxFragShaderPathFromFrag();
+
+	/** @brief 使用已保存的 Instance/Device/Queue 等调用 ImGui_ImplVulkan_Init */
+	void initImGuiVulkanBackend();
+
+	VkAllocationCallbacks* Allocator = nullptr;
+
+	VkInstance Instance = VK_NULL_HANDLE;
+
+	VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
+
+	VkDevice Device = VK_NULL_HANDLE;
+
+	uint32_t QueueFamily = 0;
+
+	VkQueue Queue = VK_NULL_HANDLE;
+
+	VkPipelineCache PipelineCache = VK_NULL_HANDLE;
+
+	/** @brief ImGui IO 快照（部分路径历史代码使用） */
+	ImGuiIO g_io{};
+
 	GLFWwindow* window = nullptr;
-	VkSurfaceKHR surface;
+
+	/** @brief 为 true 时 refreshVulkanShader() 返回 true */
 	bool refreshVulkanRender = false;
 
-	char VertexShaderPath[1024];
-	char FragShdaerPath[1024];
-	char ModelPath[1024];
-	char TexturePath[1024];
+	/** @brief 顶点着色器目录前缀 + 文件名缓冲区 */
+	char VertexShaderPath[1024]{};
 
-	char currentVertexShaderPath[1024];
-	char currentFragShdaerPath[1024];
-	char currentModelPath[1024];
-	char currentTexturePath[1024];
+	char FragShdaerPath[1024]{};
 
-	int currentIndex = -1;
+	char ModelPath[1024]{};
+
+	char TexturePath[1024]{};
+
+	char currentVertexShaderPath[1024]{};
+
+	char currentFragShdaerPath[1024]{};
+
+	char currentModelPath[1024]{};
+
+	char currentTexturePath[1024]{};
+
+	int currentIndex = 0;
+
+	float boxPosition[3] = { 0.0f, 0.0f, 0.0f };
+
+	uint64_t lastAddedBoxId = 0;
+
+	uint64_t deleteBoxId = 0;
+
+	VulkanRender* vulkanRender = nullptr;
+
 };
