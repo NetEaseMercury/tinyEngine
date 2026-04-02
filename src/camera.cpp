@@ -1,7 +1,8 @@
 #include "camera.hpp"
 
 /**
- * @brief ????????lookAt ????? position??target ??? Forward?????? WorldUp ?? Right??Up??
+ * @brief Construct camera from position, look-at target, and world up direction.
+ *        Derives Forward from (target - position), then cross-products for Right and Up.
  */
 Camera::Camera(glm::vec3 position, glm::vec3 target, glm::vec3 worldup)
 {
@@ -13,7 +14,8 @@ Camera::Camera(glm::vec3 position, glm::vec3 target, glm::vec3 worldup)
 }
 
 /**
- * @brief ????????????????? cos/sin ????? Pitch??Yaw §Õ?? Forward?????? Right??Up??
+ * @brief Construct camera from position and Euler angles (radians).
+ *        Computes Forward via spherical-coordinate formula from Pitch/Yaw.
  */
 Camera::Camera(glm::vec3 position, float pitch, float yaw, glm::vec3 worldup)
 {
@@ -29,7 +31,8 @@ Camera::Camera(glm::vec3 position, float pitch, float yaw, glm::vec3 worldup)
 }
 
 /**
- * @brief ?????????????????? glm????????? proj * view * model??
+ * @brief Return the view matrix: lookAt(Position, Position + Forward, WorldUp).
+ *        Combine with projection as proj * view * model.
  */
 glm::mat4 Camera::GetViewMatrix()
 {
@@ -37,7 +40,8 @@ glm::mat4 Camera::GetViewMatrix()
 }
 
 /**
- * @brief ?? camera.hpp ????????????????????Pitch ???? ??89?? ?????????????
+ * @brief Apply mouse drag delta to Pitch and Yaw.
+ *        Pitch is clamped to [-89, 89] degrees to prevent gimbal-lock flip.
  */
 void Camera::ProcessMouseMovement(float deltaX, float deltaY)
 {
@@ -51,7 +55,8 @@ void Camera::ProcessMouseMovement(float deltaX, float deltaY)
 }
 
 /**
- * @brief ?? camera.hpp ?????????? Pitch/Yaw ??? Forward??Right??Up??
+ * @brief Recompute Forward, Right, Up basis vectors from current Pitch/Yaw
+ *        using the spherical-coordinate to Cartesian conversion.
  */
 void Camera::UpdataCameraVectors()
 {
@@ -63,21 +68,29 @@ void Camera::UpdataCameraVectors()
 }
 
 /**
- * @brief ?? camera.hpp ????????????????????????? Position??
+ * @brief Integrate Position along Forward/Right/Up basis scaled by speed inputs and SPEED.
+ *        speedX/speedY/speedZ are set externally by keyboard callbacks.
  */
 void Camera::UpdataCameraPosition()
 {
 	Position += Forward * speedZ * SPEED + Right * speedX * SPEED + Up * speedY * SPEED;
 }
 
-/** @brief ???§Õ?? SPEED ??? */
+/** @brief Set the per-frame movement multiplier SPEED. */
 void Camera::SetSpeed(float speed)
 {
 	SPEED = speed;
 }
 
 /**
- * @brief ?? camera.hpp ???????????????????????????????????
+ * @brief Begin a smooth-focus animation: fly the camera toward a world point while looking at it.
+ * @param worldFocusPoint  World-space point to look at (e.g. bounding-box center of a model).
+ * @param cameraDistance   Desired distance from the focus point at animation end.
+ * @param durationSec      Animation duration in seconds; values <= 0.01 fall back to 0.65s.
+ *
+ * The end position is placed along the current view direction (away from the focus point)
+ * to preserve the user's viewing angle. If the camera is nearly coincident with the focus
+ * point, a fixed fallback offset is used to avoid a zero-length direction vector.
  */
 void Camera::BeginSmoothFocus(const glm::vec3& worldFocusPoint, float cameraDistance, float durationSec)
 {
@@ -95,6 +108,7 @@ void Camera::BeginSmoothFocus(const glm::vec3& worldFocusPoint, float cameraDist
 	smoothFocusPos1_ = worldFocusPoint + w * dist;
 }
 
+/** @brief Hermite smoothstep: cubic ease-in-out curve mapping [0,1] -> [0,1]. */
 static float smoothstep01(float x)
 {
 	x = glm::clamp(x, 0.0f, 1.0f);
@@ -102,7 +116,10 @@ static float smoothstep01(float x)
 }
 
 /**
- * @brief ?? camera.hpp ???????????¦Ë?¨°????????????? smoothFocusTarget_??
+ * @brief Advance the smooth-focus animation by deltaTime seconds.
+ *        Position is interpolated via smoothstep between start and end points;
+ *        Pitch/Yaw are recalculated each frame to keep the camera aimed at the focus target.
+ *        Automatically deactivates when t >= 1.
  */
 void Camera::UpdateSmoothFocus(float deltaTime)
 {
