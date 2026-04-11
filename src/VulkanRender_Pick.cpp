@@ -3,6 +3,7 @@
  * @brief Object-ID pick pass: R32_UINT color, separate render pass, readback buffer.
  */
 #include "VulkanRender.hpp"
+#include "TinyEngineDebug.hpp"
 #include "vectex.hpp"
 #include <glm/gtc/matrix_transform.hpp>
 #include <array>
@@ -354,6 +355,8 @@ void VulkanRender::runPickPassReadId(uint32_t pixelX, uint32_t pixelY, uint32_t&
 	if (vkBeginCommandBuffer(cb, &beginInfo) != VK_SUCCESS) {
 		throw std::runtime_error("pick: begin command buffer");
 	}
+
+	TINYENGINE(cb, "Pick Pass");
 
 	VkRenderPassBeginInfo rpBegin{};
 	rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;

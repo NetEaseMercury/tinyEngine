@@ -182,13 +182,14 @@ bool VulkanRender::checkDeviceExtensionSupport(VkPhysicalDevice dev)
 	return requiredExtensions.empty();
 }
 
-/** @brief GLFW surface extensions for instance create info */
+/** @brief GLFW surface extensions + VK_EXT_debug_utils for instance create info */
 std::vector<const char*> VulkanRender::getRequiredExtensions()
 {
 	uint32_t glfwExtensionCount = 0;
 	const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
 	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+	extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
 	return extensions;
 }

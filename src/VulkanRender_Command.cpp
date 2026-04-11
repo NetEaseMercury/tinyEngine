@@ -3,6 +3,7 @@
  * @brief Command pool/buffers, main pass recording, swapchain present loop.
  */
 #include "VulkanRender.hpp"
+#include "TinyEngineDebug.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 #include <array>
@@ -78,24 +79,30 @@ void VulkanRender::recordCommandBuffer(uint32_t i)
 	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
 
+	TINYENGINE(cb, "Main Render Pass");
 	vkCmdBeginRenderPass(cb, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-	vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-	VkBuffer vertexBuffers[] = { vertexBuffer };
-	VkDeviceSize offsets[] = { 0 };
-	vkCmdBindVertexBuffers(cb, 0, 1, vertexBuffers, offsets);
+	{
+		TINYENGINE(cb, "Scene Geometry");
+		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-	vkCmdBindIndexBuffer(cb, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		VkBuffer vertexBuffers[] = { vertexBuffer };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(cb, 0, 1, vertexBuffers, offsets);
 
-	vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1,
-		&descriptorSets[i], 0, nullptr);
+		vkCmdBindIndexBuffer(cb, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-	const glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), mainModelPosition);
-	vkCmdPushConstants(cb, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMatrix);
+		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1,
+			&descriptorSets[i], 0, nullptr);
 
-	vkCmdDrawIndexed(cb, modelIndexCount, 1, 0, 0, 0);
+		const glm::mat4 modelMatrix = glm::translate(glm::mat4(1.0f), mainModelPosition);
+		vkCmdPushConstants(cb, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &modelMatrix);
+
+		vkCmdDrawIndexed(cb, modelIndexCount, 1, 0, 0, 0);
+	}
 
 	if (!boxIndexRanges.empty()) {
+		TINYENGINE(cb, "Box Geometry");
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline);
 		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, boxPipelineLayout, 0, 1,
 			&boxDescriptorSets[i], 0, nullptr);
@@ -109,6 +116,7 @@ void VulkanRender::recordCommandBuffer(uint32_t i)
 	if (ImGui::GetCurrentContext() != nullptr) {
 		ImDrawData* dd = ImGui::GetDrawData();
 		if (dd != nullptr && dd->Valid) {
+			TINYENGINE(cb, "ImGui Overlay");
 			ImGui_ImplVulkan_RenderDrawData(dd, cb);
 		}
 	}
