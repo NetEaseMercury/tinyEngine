@@ -211,7 +211,7 @@ void VulkanRender::createVulkanGraphicsPipeline(std::string vertSpv, std::string
 	vkDestroyShaderModule(device, fragShaderModule, nullptr);
 }
 
-/** @brief Second submesh draw: simple shading, identity push constant */
+/** @brief Second submesh draw: GPU instanced, UBO-only layout (no push constant) */
 void VulkanRender::createBoxGraphicsPipeline(std::string vertSpv, std::string boxFragSpv)
 {
 	auto vertShaderCode = readFile(vertSpv);
@@ -237,14 +237,23 @@ void VulkanRender::createBoxGraphicsPipeline(std::string vertSpv, std::string bo
 
 	VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
 
+	// Two vertex bindings: per-vertex (binding=0) and per-instance (binding=1)
+	auto vertBindingDesc = Vertex::getBindingDescription();
+	auto instBindingDesc = InstanceData::getBindingDescription();
+	std::array<VkVertexInputBindingDescription, 2> bindingDescs = { vertBindingDesc, instBindingDesc };
+
+	auto vertAttrDescs = Vertex::getAttributeDescriptions();
+	auto instAttrDesc  = InstanceData::getAttributeDescription();
+	std::array<VkVertexInputAttributeDescription, 4> attrDescs = {
+		vertAttrDescs[0], vertAttrDescs[1], vertAttrDescs[2], instAttrDesc
+	};
+
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	auto bindingDescription = Vertex::getBindingDescription();
-	auto attributeDescription = Vertex::getAttributeDescriptions();
-	vertexInputInfo.vertexBindingDescriptionCount = 1;
-	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescription.size());
-	vertexInputInfo.pVertexAttributeDescriptions = attributeDescription.data();
+	vertexInputInfo.vertexBindingDescriptionCount   = static_cast<uint32_t>(bindingDescs.size());
+	vertexInputInfo.pVertexBindingDescriptions      = bindingDescs.data();
+	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrDescs.size());
+	vertexInputInfo.pVertexAttributeDescriptions    = attrDescs.data();
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
 	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -304,17 +313,13 @@ void VulkanRender::createBoxGraphicsPipeline(std::string vertSpv, std::string bo
 	colorBlendState.attachmentCount = 1;
 	colorBlendState.pAttachments = &colorBlendAttachment;
 
-	VkPushConstantRange boxPushRange{};
-	boxPushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	boxPushRange.offset = 0;
-	boxPushRange.size = sizeof(glm::mat4);
-
+	// No push constant: box positions are supplied via the instance buffer
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = 1;
 	pipelineLayoutInfo.pSetLayouts = &boxDescriptorSetLayout;
-	pipelineLayoutInfo.pushConstantRangeCount = 1;
-	pipelineLayoutInfo.pPushConstantRanges = &boxPushRange;
+	pipelineLayoutInfo.pushConstantRangeCount = 0;
+	pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
 	if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &boxPipelineLayout) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create box pipeline layout");

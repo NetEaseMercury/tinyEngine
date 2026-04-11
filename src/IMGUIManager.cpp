@@ -141,6 +141,16 @@ void UIManager::setRefreshVulkanStatus(bool status)
     refreshVulkanRender = status;
 }
 
+/** @brief 见 IMGUIManager.hpp：由 vert 路径派生 box 顶点 shader 路径 */
+void UIManager::syncBoxVertShaderPathFromVert()
+{
+    boxVertShaderPath = vertexShaderPath;
+    static const char kVert[] = "vert.spv";
+    const size_t pos = boxVertShaderPath.rfind(kVert);
+    if (pos != std::string::npos)
+        boxVertShaderPath.replace(pos, sizeof(kVert) - 1, "box_vert.spv");
+}
+
 /** @brief 见 IMGUIManager.hpp：由 frag 路径派生 box 片段 shader 路径 */
 void UIManager::syncBoxFragShaderPathFromFrag()
 {
@@ -170,6 +180,7 @@ void UIManager::setModelDefaultPath()
 	vertexShaderPath = currentVertexShaderPath;
 	fragShaderPath = currentFragShdaerPath;
 	syncBoxFragShaderPathFromFrag();
+	syncBoxVertShaderPathFromVert();
 	modelPath = modelResolved;
 	texturePath = texResolved;
 }
@@ -259,6 +270,7 @@ void UIManager::prepareFrame()
         vertexShaderPath = currentVertexShaderPath;
         fragShaderPath = currentFragShdaerPath;
         syncBoxFragShaderPathFromFrag();
+        syncBoxVertShaderPathFromVert();
         modelPath = currentModelPath;
         texturePath = currentTexturePath;
         currentIndex = selectedIndex;

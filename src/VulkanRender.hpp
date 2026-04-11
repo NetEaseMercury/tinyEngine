@@ -71,14 +71,6 @@ struct SwapChainSupportDetails {
 };
 
 /**
- * @brief ???????????????????????? firstIndex ?? indexCount???? boxRangeEntityIds ????
- */
-struct BoxIndexRange {
-	uint32_t firstIndex = 0;
-	uint32_t indexCount = 0;
-};
-
-/**
  * @brief ???? Model ??????????????????????????? VBO/IBO???????????????????
  */
 struct Model {
@@ -230,8 +222,19 @@ private:
 	RenderEntityId nextRenderEntityId = 1;
 
 	uint32_t modelIndexCount = 0;
-	std::vector<BoxIndexRange> boxIndexRanges;
 	std::vector<RenderEntityId> boxRangeEntityIds;
+
+	// Cube GPU buffers (static template, uploaded once)
+	VkBuffer cubeVertexBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory cubeVertexBufferMemory = VK_NULL_HANDLE;
+	VkBuffer cubeIndexBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory cubeIndexBufferMemory = VK_NULL_HANDLE;
+	uint32_t cubeIndexCount = 0;
+
+	// Instance buffer (rebuilt when boxes change)
+	VkBuffer instanceBuffer = VK_NULL_HANDLE;
+	VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
+	uint32_t instanceCount = 0;
 
 	VkRenderPass pickRenderPass{};
 	VkFramebuffer pickFramebuffer{};
@@ -346,7 +349,16 @@ private:
 	VkCommandBuffer beginSingleTimeCommands();
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
-	/** @brief ????????????????D?????????? addBox ??????? */
+	/** @brief Upload cubeTemplateVertices/Indices to DEVICE_LOCAL VBO/IBO */
+	void createCubeGpuBuffers();
+	/** @brief Safely destroy cube VBO/IBO */
+	void destroyCubeGpuBuffers();
+	/** @brief Rebuild HOST_VISIBLE instance buffer from sorted boxes map */
+	void rebuildInstanceBuffer();
+	/** @brief Safely destroy instance buffer */
+	void destroyInstanceBuffer();
+
+	/** @brief Fill cubeTemplateVertices/Indices with unit cube (half-extent 0.5) for instancing */
 	void createCubeTemplate();
 	/** @brief CPU ????????????????????????????? vertices/indices ?? boxIndexRanges */
 	void rebuildCombinedGeometryCPU();

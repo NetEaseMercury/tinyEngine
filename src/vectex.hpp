@@ -1,13 +1,14 @@
 
 #ifndef VERTEX
 #define VERTEX
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 #include <array>
 #include <vulkan/vulkan_core.h>
 
-// 定义顶点信息
+// 锟斤拷锟藉顶锟斤拷锟斤拷息
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
@@ -55,8 +56,30 @@ struct VertexHash {
         auto hash1 = std::hash<glm::vec3>()(vertex.pos);
         auto hash2 = std::hash<glm::vec2>()(vertex.texCoord);
         auto hash3 = std::hash<glm::vec3>()(vertex.color);
-        // 将所有哈希值组合成一个值
         return hash1 ^ (hash2 << 1) ^ (hash3 << 2);
     }
 };
+
+/** @brief Per-instance data for GPU instanced box rendering (binding=1, instance rate) */
+struct InstanceData {
+    glm::vec3 position;
+
+    static VkVertexInputBindingDescription getBindingDescription() {
+        VkVertexInputBindingDescription desc{};
+        desc.binding = 1;
+        desc.stride = sizeof(InstanceData);
+        desc.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+        return desc;
+    }
+
+    static VkVertexInputAttributeDescription getAttributeDescription() {
+        VkVertexInputAttributeDescription attr{};
+        attr.binding = 1;
+        attr.location = 3;
+        attr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        attr.offset = offsetof(InstanceData, position);
+        return attr;
+    }
+};
+
 #endif // !VERTEX

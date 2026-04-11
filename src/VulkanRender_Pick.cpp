@@ -394,16 +394,21 @@ void VulkanRender::runPickPassReadId(uint32_t pixelX, uint32_t pixelY, uint32_t&
 		vkCmdDrawIndexed(cb, modelIndexCount, 1, 0, 0, 0);
 	}
 
-	const glm::mat4 identity(1.0f);
-	for (size_t bi = 0; bi < boxIndexRanges.size(); ++bi) {
-		const auto& range = boxIndexRanges[bi];
-		std::array<uint8_t, kPickPushConstantSize> bytes{};
-		std::memcpy(bytes.data(), &identity, sizeof(glm::mat4));
-		const uint32_t oid = kPickIdBoxBase + static_cast<uint32_t>(bi);
-		std::memcpy(bytes.data() + sizeof(glm::mat4), &oid, sizeof(uint32_t));
-		vkCmdPushConstants(cb, pickPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-			kPickPushConstantSize, bytes.data());
-		vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, 0);
+	if (cubeVertexBuffer != VK_NULL_HANDLE && cubeIndexCount > 0 && !boxRangeEntityIds.empty()) {
+		const VkDeviceSize off0box = 0;
+		vkCmdBindVertexBuffers(cb, 0, 1, &cubeVertexBuffer, &off0box);
+		vkCmdBindIndexBuffer(cb, cubeIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		for (size_t bi = 0; bi < boxRangeEntityIds.size(); ++bi) {
+			const RenderEntityId eid = boxRangeEntityIds[bi];
+			const glm::mat4 boxM = glm::translate(glm::mat4(1.0f), boxes.at(eid));
+			std::array<uint8_t, kPickPushConstantSize> bytes{};
+			std::memcpy(bytes.data(), &boxM, sizeof(glm::mat4));
+			const uint32_t oid = kPickIdBoxBase + static_cast<uint32_t>(bi);
+			std::memcpy(bytes.data() + sizeof(glm::mat4), &oid, sizeof(uint32_t));
+			vkCmdPushConstants(cb, pickPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+				kPickPushConstantSize, bytes.data());
+			vkCmdDrawIndexed(cb, cubeIndexCount, 1, 0, 0, 0);
+		}
 	}
 
 	vkCmdEndRenderPass(cb);

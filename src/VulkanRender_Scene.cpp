@@ -191,39 +191,15 @@ void VulkanRender::createCubeTemplate()
 	addFace(glm::vec3(-s, -s, -s), glm::vec3(+s, -s, -s), glm::vec3(+s, -s, +s), glm::vec3(-s, -s, +s));
 }
 
-/** @brief Merge main mesh + sorted boxes into single vertices/indices; fill boxIndexRanges */
+/** @brief Rebuild vertices/indices from main model only; boxes are now rendered via GPU instancing */
 void VulkanRender::rebuildCombinedGeometryCPU()
 {
 	vertices.clear();
 	indices.clear();
-	boxIndexRanges.clear();
-	boxRangeEntityIds.clear();
 
 	vertices = modelVertices;
 	indices = modelIndices;
 	modelIndexCount = static_cast<uint32_t>(modelIndices.size());
-
-	std::vector<std::pair<RenderEntityId, glm::vec3>> boxList(boxes.begin(), boxes.end());
-	std::sort(boxList.begin(), boxList.end(),
-		[](const std::pair<RenderEntityId, glm::vec3>& a, const std::pair<RenderEntityId, glm::vec3>& b) {
-			return a.first < b.first;
-		});
-
-	for (const auto& kv : boxList) {
-		const glm::vec3& pos = kv.second;
-		const uint32_t baseVertex = static_cast<uint32_t>(vertices.size());
-		for (const Vertex& tmpl : cubeTemplateVertices) {
-			Vertex v = tmpl;
-			v.pos += pos;
-			vertices.push_back(v);
-		}
-		const uint32_t firstIndex = static_cast<uint32_t>(indices.size());
-		for (uint32_t idx : cubeTemplateIndices) {
-			indices.push_back(baseVertex + idx);
-		}
-		boxIndexRanges.push_back({ firstIndex, static_cast<uint32_t>(cubeTemplateIndices.size()) });
-		boxRangeEntityIds.push_back(kv.first);
-	}
 }
 
 /** @brief Free GPU vertex/index buffers for merged geometry */
@@ -262,16 +238,16 @@ void VulkanRender::recreateGeometryBuffersAndCommandBuffers()
 	createCommandBuffers();
 }
 
-/** @brief Register box position, bump id, rebuild geometry (see VulkanRender.hpp) */
+/** @brief Register box position, bump id, rebuild instance buffer */
 VulkanRender::RenderEntityId VulkanRender::addBox(const glm::vec3& position)
 {
 	RenderEntityId id = nextRenderEntityId++;
 	boxes[id] = position;
-	recreateGeometryBuffersAndCommandBuffers();
+	rebuildInstanceBuffer();
 	return id;
 }
 
-/** @brief Erase box by id; clear pick if needed; rebuild geometry */
+/** @brief Erase box by id; clear pick if needed; rebuild instance buffer */
 bool VulkanRender::removeBox(RenderEntityId id)
 {
 	auto it = boxes.find(id);
@@ -282,7 +258,7 @@ bool VulkanRender::removeBox(RenderEntityId id)
 	if (pickedBoxEntityId == id) {
 		pickedBoxEntityId = 0;
 	}
-	recreateGeometryBuffersAndCommandBuffers();
+	rebuildInstanceBuffer();
 	return true;
 }
 
@@ -296,12 +272,12 @@ glm::vec3 VulkanRender::getBoxPosition(RenderEntityId id) const
 	return it->second;
 }
 
-/** @brief Update box transform and rebuild merged buffers */
+/** @brief Update box transform and rebuild instance buffer */
 void VulkanRender::setBoxPosition(RenderEntityId id, const glm::vec3& worldPosition)
 {
 	if (boxes.find(id) == boxes.end()) {
 		return;
 	}
 	boxes[id] = worldPosition;
-	recreateGeometryBuffersAndCommandBuffers();
+	rebuildInstanceBuffer();
 }

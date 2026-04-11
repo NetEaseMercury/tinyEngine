@@ -172,7 +172,7 @@ void VulkanRender::initVulkan()
 	createVulkanDescriptorSetLayout();
 	createBoxDescriptorSetLayout();
 	createVulkanGraphicsPipeline(imGUI->vertexShaderPath, imGUI->fragShaderPath);
-	createBoxGraphicsPipeline(imGUI->vertexShaderPath, imGUI->boxFragShaderPath);
+	createBoxGraphicsPipeline(imGUI->boxVertShaderPath, imGUI->boxFragShaderPath);
 	createCommandPool();
 	createDepthResources();
 	createFramebuffers();
@@ -207,6 +207,7 @@ void VulkanRender::initVulkan()
 	}
 
 	createCubeTemplate();
+	createCubeGpuBuffers();
 	loadModel(imGUI->modelPath, glm::vec3(0, 0, 0));
 
 	createVertexBuffer();
@@ -232,6 +233,9 @@ void VulkanRender::initVulkan()
 void VulkanRender::cleanUp()
 {
 	destroyPickPassResources();
+
+	destroyInstanceBuffer();
+	destroyCubeGpuBuffers();
 
 	vkDestroySampler(device, textureSampler, nullptr);
 	vkDestroyImageView(device, textureImageView, nullptr);
@@ -300,7 +304,7 @@ void VulkanRender::tryBeginCameraFocusOnPick()
 	camera.BeginSmoothFocus(focus, distance, 0.65f);
 }
 
-/** @brief ? WASD  F ?? VulkanRender.hpp */
+/** @brief ? WASD ï¿½ï¿½ F ï¿½ï¿½ï¿½ï¿½??ï¿½ï¿½ VulkanRender.hppï¿½ï¿½ */
 void VulkanRender::processInput(GLFWwindow* w)
 {
 	static bool fKeyWasDown = false;

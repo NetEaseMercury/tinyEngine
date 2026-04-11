@@ -101,16 +101,16 @@ void VulkanRender::recordCommandBuffer(uint32_t i)
 		vkCmdDrawIndexed(cb, modelIndexCount, 1, 0, 0, 0);
 	}
 
-	if (!boxIndexRanges.empty()) {
+	if (instanceCount > 0 && instanceBuffer != VK_NULL_HANDLE && cubeVertexBuffer != VK_NULL_HANDLE) {
 		TINYENGINE(cb, "Box Geometry");
 		vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline);
 		vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, boxPipelineLayout, 0, 1,
 			&boxDescriptorSets[i], 0, nullptr);
-		const glm::mat4 identity(1.0f);
-		vkCmdPushConstants(cb, boxPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &identity);
-		for (const auto& range : boxIndexRanges) {
-			vkCmdDrawIndexed(cb, range.indexCount, 1, range.firstIndex, 0, 0);
-		}
+		VkBuffer vertexBuffers[] = { cubeVertexBuffer, instanceBuffer };
+		VkDeviceSize offsets[] = { 0, 0 };
+		vkCmdBindVertexBuffers(cb, 0, 2, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(cb, cubeIndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vkCmdDrawIndexed(cb, cubeIndexCount, instanceCount, 0, 0, 0);
 	}
 
 	if (ImGui::GetCurrentContext() != nullptr) {

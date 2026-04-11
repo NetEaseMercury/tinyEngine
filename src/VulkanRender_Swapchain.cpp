@@ -384,7 +384,7 @@ void VulkanRender::recreateSwapChain()
 	}
 
 	createVulkanGraphicsPipeline(imGUI->vertexShaderPath, imGUI->fragShaderPath);
-	createBoxGraphicsPipeline(imGUI->vertexShaderPath, imGUI->boxFragShaderPath);
+	createBoxGraphicsPipeline(imGUI->boxVertShaderPath, imGUI->boxFragShaderPath);
 	createDepthResources();
 	createFramebuffers();
 

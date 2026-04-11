@@ -101,6 +101,9 @@ public:
 	/** @brief 盒子所用片段着色器路径（通常由 frag 路径派生为 box.spv） */
 	std::string boxFragShaderPath;
 
+	/** @brief 盒子所用顶点着色器 SPIR-V 路径（由 vert.spv 派生为 box_vert.spv） */
+	std::string boxVertShaderPath;
+
 	/** @brief 当前加载的 OBJ 模型路径 */
 	std::string modelPath;
 
@@ -114,6 +117,9 @@ private:
 
 	/** @brief 根据 fragShaderPath 生成 boxFragShaderPath（frag.spv → box.spv） */
 	void syncBoxFragShaderPathFromFrag();
+
+	/** @brief 根据 vertexShaderPath 生成 boxVertShaderPath（vert.spv → box_vert.spv） */
+	void syncBoxVertShaderPathFromVert();
 
 	/** @brief 使用已保存的 Instance/Device/Queue 等调用 ImGui_ImplVulkan_Init */
 	void initImGuiVulkanBackend();
