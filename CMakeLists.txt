@@ -33,6 +33,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/imgui
                 thirdParty/stb_image
                 thirdParty/ImGuizmo
+                thirdParty/renderdoc
         )
 
 
@@ -74,5 +75,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET tinyEngine PROPERTY CXX_STANDARD 20)
 endif()
+
 
 # TODO: 如有需要，请添加测试并安装目标。

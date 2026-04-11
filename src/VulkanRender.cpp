@@ -5,6 +5,7 @@
  */
 #include "VulkanRender.hpp"
 #include "VulkanRender_Globals.hpp"
+#include "TinyEngineDebug.hpp"
 #include "IMGUIManager.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
@@ -81,6 +82,7 @@ void VulkanRender::Run()
 /** @brief GLFW?????????????????? Vulkan + ImGui ????? */
 void VulkanRender::initEngine()
 {
+	tinyengine::debug::initRenderDoc();
 	initGLFW();
 	imGUI->setModelDefaultPath();
 	initVulkan();
@@ -160,6 +162,7 @@ void VulkanRender::initIMGUI()
 void VulkanRender::initVulkan()
 {
 	createVulkanInstance();
+	tinyengine::debug::initDebugUtils(instance_);
 	createSurface();
 	setPhysicalDevice();
 	setLogicalDevice();
@@ -297,7 +300,7 @@ void VulkanRender::tryBeginCameraFocusOnPick()
 	camera.BeginSmoothFocus(focus, distance, 0.65f);
 }
 
-/** @brief √ø÷° WASD ”Î F º¸±ﬂ—ÿºÏ≤‚£®º˚ VulkanRender.hpp£© */
+/** @brief ? WASD ùù F ùùùù??ùù VulkanRender.hppùù */
 void VulkanRender::processInput(GLFWwindow* w)
 {
 	static bool fKeyWasDown = false;
