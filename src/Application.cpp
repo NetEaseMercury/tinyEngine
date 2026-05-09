@@ -91,8 +91,6 @@ void Application::initVulkan()
     rpMgr_.create(ctx_, swapChain_);
 
     bufMgr_.init(ctx_, cmdMgr_);
-    texMgr_.loadTexture(ctx_, cmdMgr_, fbMgr_, ui_->texturePath);
-    texMgr_.loadNormalMap(ctx_, cmdMgr_, fbMgr_, ui_->texturePath);
 
     pipeMgr_.create(ctx_, rpMgr_,
                     ui_->vertexShaderPath, ui_->fragShaderPath,
@@ -104,7 +102,11 @@ void Application::initVulkan()
     sceneMgr_.createCubeTemplate(bufMgr_);
     sceneMgr_.loadModel(ui_->modelPath, glm::vec3(0.f), bufMgr_);
 
-    descMgr_.create(ctx_, swapChain_, pipeMgr_, texMgr_, bufMgr_);
+    matMgr_.init(ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_,
+                 swapChain_.getImageCount(), ui_->texturePath);
+    sceneMgr_.setModelMaterialId(matMgr_.getDefaultMeshMaterialId());
+
+    descMgr_.create(ctx_, swapChain_, pipeMgr_, bufMgr_);
 
     ui_->setVulkanInstance(ctx_.getInstance(), nullptr);
     ui_->setPhysicalDevice(ctx_.getDevice(), ctx_.getPhysicalDevice());
@@ -183,7 +185,7 @@ void Application::drawFrame()
         p[1][1] *= -1;
         return p;
     }();
-    descMgr_.updateUniformBuffer(imageIndex, view, proj, materialTintRgb, boxMaterialTintRgb);
+    matMgr_.updateAllUBOs(imageIndex, view, proj);
 
     VkFence& imgFence = cmdMgr_.getImageInFlight(imageIndex);
     if (imgFence != VK_NULL_HANDLE)
@@ -257,14 +259,18 @@ void Application::recordCommandBuffer(VkCommandBuffer cb, uint32_t imageIndex)
     TINYENGINE(cb, "Main Render Pass");
     vkCmdBeginRenderPass(cb, &rpi, VK_SUBPASS_CONTENTS_INLINE);
 
-    // Main model
+    // Main model — use its assigned material descriptor set
     if (sceneMgr_.getModelIndexCount() > 0) {
         TINYENGINE(cb, "Scene Geometry");
+        const MaterialId meshMat = matMgr_.isValid(sceneMgr_.getModelMaterialId())
+            ? sceneMgr_.getModelMaterialId()
+            : matMgr_.getDefaultMeshMaterialId();
+
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeMgr_.getMainPipeline());
         VkBuffer vb = sceneMgr_.getVertexBuffer(); VkDeviceSize off = 0;
         vkCmdBindVertexBuffers(cb, 0, 1, &vb, &off);
         vkCmdBindIndexBuffer(cb, sceneMgr_.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        VkDescriptorSet ds = descMgr_.getMainDescriptorSet(imageIndex);
+        VkDescriptorSet ds = matMgr_.getDescriptorSet(meshMat, imageIndex);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipeMgr_.getMainPipelineLayout(), 0, 1, &ds, 0, nullptr);
         glm::mat4 model = glm::translate(glm::mat4(1.f), mainModelPosition);
@@ -273,11 +279,11 @@ void Application::recordCommandBuffer(VkCommandBuffer cb, uint32_t imageIndex)
         vkCmdDrawIndexed(cb, sceneMgr_.getModelIndexCount(), 1, 0, 0, 0);
     }
 
-    // GPU-instanced boxes
+    // GPU-instanced boxes — all share the default box material (preserves instancing)
     if (sceneMgr_.getInstanceCount() > 0 && sceneMgr_.getInstanceBuffer() != VK_NULL_HANDLE) {
         TINYENGINE(cb, "Box Geometry");
         vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeMgr_.getBoxPipeline());
-        VkDescriptorSet ds = descMgr_.getBoxDescriptorSet(imageIndex);
+        VkDescriptorSet ds = matMgr_.getDescriptorSet(matMgr_.getDefaultBoxMaterialId(), imageIndex);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipeMgr_.getBoxPipelineLayout(), 0, 1, &ds, 0, nullptr);
         VkBuffer bufs[] = { sceneMgr_.getCubeVertexBuffer(), sceneMgr_.getInstanceBuffer() };
@@ -316,6 +322,7 @@ void Application::recreateSwapChain()
     pickSys_.destroy(ctx_, cmdMgr_);
     cmdMgr_.freeCommandBuffers(ctx_);
     descMgr_.destroy(ctx_);
+    matMgr_.destroy(ctx_);
     fbMgr_.destroy(ctx_);
     pipeMgr_.destroyPipelines(ctx_);
     rpMgr_.destroy(ctx_);
@@ -333,17 +340,17 @@ void Application::recreateSwapChain()
 
     fbMgr_.create(ctx_, swapChain_, rpMgr_);
 
-    texMgr_.destroy(ctx_);
-    texMgr_.loadTexture(ctx_, cmdMgr_, fbMgr_, ui_->texturePath);
-    texMgr_.loadNormalMap(ctx_, cmdMgr_, fbMgr_, ui_->texturePath);
-
     sceneMgr_.destroyModelBuffers(ctx_);
     sceneMgr_.loadModel(ui_->modelPath, glm::vec3(0.f), bufMgr_);
     mainModelPosition  = glm::vec3(0.f);
     mainModelSelected  = false;
     pickedBoxEntityId  = 0;
 
-    descMgr_.create(ctx_, swapChain_, pipeMgr_, texMgr_, bufMgr_);
+    matMgr_.init(ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_,
+                 swapChain_.getImageCount(), ui_->texturePath);
+    sceneMgr_.setModelMaterialId(matMgr_.getDefaultMeshMaterialId());
+
+    descMgr_.create(ctx_, swapChain_, pipeMgr_, bufMgr_);
     pickSys_.create(ctx_, cmdMgr_);
     cmdMgr_.allocateCommandBuffers(ctx_, swapChain_.getImageCount());
 }
@@ -368,7 +375,7 @@ void Application::tryPickMainModel(float cx, float cy)
     const int px = std::max(0, std::min(static_cast<int>(fx), maxX));
     const int py = std::max(0, std::min(static_cast<int>(fy), maxY));
 
-    // Update UBO slot 0 with current camera before pick pass
+    // Update pick UBO slot 0 with current camera before pick pass
     const VkExtent2D ext = swapChain_.getExtent();
     const glm::mat4 view = camera_.GetViewMatrix();
     const glm::mat4 proj = [&]() {
@@ -378,7 +385,7 @@ void Application::tryPickMainModel(float cx, float cy)
         p[1][1] *= -1;
         return p;
     }();
-    descMgr_.updateUniformBuffer(0, view, proj, materialTintRgb, boxMaterialTintRgb);
+    descMgr_.updateUniformBuffer(0, view, proj);
 
     const uint32_t id = pickSys_.runPick(ctx_, rpMgr_, fbMgr_, pipeMgr_,
                                           descMgr_.getBoxDescriptorSet(0),
@@ -387,12 +394,17 @@ void Application::tryPickMainModel(float cx, float cy)
                                           static_cast<uint32_t>(py));
 
     if (id == SceneManager::kPickIdNone) return;
-    if (id == SceneManager::kPickIdMainModel) { mainModelSelected = true; return; }
+    if (id == SceneManager::kPickIdMainModel) {
+        mainModelSelected  = true;
+        selectedMaterialId = sceneMgr_.getModelMaterialId();
+        return;
+    }
     if (id >= SceneManager::kPickIdBoxBase) {
         const uint32_t idx = id - SceneManager::kPickIdBoxBase;
         const auto& ids = sceneMgr_.getBoxRangeEntityIds();
         if (idx < ids.size()) {
-            pickedBoxEntityId = ids[idx];
+            pickedBoxEntityId  = ids[idx];
+            selectedMaterialId = sceneMgr_.getBoxMaterialId(pickedBoxEntityId);
         }
     }
 }
@@ -416,6 +428,51 @@ void Application::tryBeginCameraFocusOnPick()
         return;
     }
     camera_.BeginSmoothFocus(focus, distance, 0.65f);
+}
+
+// ─── Material API ─────────────────────────────────────────────────────────────
+
+void Application::setModelMaterial(MaterialId id)
+{
+    if (!matMgr_.isValid(id)) return;
+    sceneMgr_.setModelMaterialId(id);
+    if (mainModelSelected) selectedMaterialId = id;
+}
+
+void Application::setBoxMaterial(RenderEntityId eid, MaterialId id)
+{
+    if (!matMgr_.isValid(id)) return;
+    sceneMgr_.setBoxMaterialId(eid, id);
+    if (pickedBoxEntityId == eid) selectedMaterialId = id;
+}
+
+MaterialId Application::createMeshMaterial(const std::string& name,
+                                           const std::string& albedoPath,
+                                           const std::string& normalPath,
+                                           const MaterialParams& params)
+{
+    return matMgr_.createMeshMaterial(name, albedoPath, normalPath, params,
+                                      ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+}
+
+MaterialId Application::createBoxMaterial(const std::string& name, const MaterialParams& params)
+{
+    return matMgr_.createBoxMaterial(name, params, ctx_, bufMgr_, pipeMgr_);
+}
+
+void Application::destroyMaterial(MaterialId id)
+{
+    matMgr_.destroyMaterial(id, ctx_);
+}
+
+void Application::setMaterialAlbedo(MaterialId id, const std::string& path)
+{
+    matMgr_.setAlbedoPath(id, path, ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+}
+
+void Application::setMaterialNormal(MaterialId id, const std::string& path)
+{
+    matMgr_.setNormalPath(id, path, ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
 }
 
 // ─── Input ────────────────────────────────────────────────────────────────────
@@ -452,7 +509,9 @@ glm::mat4 Application::getSceneProjMatrixForImGuizmo()
 
 Application::RenderEntityId Application::addBox(const glm::vec3& pos)
 {
-    return sceneMgr_.addBox(pos, ctx_, bufMgr_);
+    RenderEntityId eid = sceneMgr_.addBox(pos, ctx_, bufMgr_);
+    sceneMgr_.setBoxMaterialId(eid, matMgr_.getDefaultBoxMaterialId());
+    return eid;
 }
 
 bool Application::removeBox(RenderEntityId id)
@@ -478,8 +537,8 @@ void Application::cleanUp()
 
     pickSys_.destroy(ctx_, cmdMgr_);
     sceneMgr_.destroy(ctx_);
+    matMgr_.destroy(ctx_);
     descMgr_.destroy(ctx_);
-    texMgr_.destroy(ctx_);
     pipeMgr_.destroy(ctx_);
     fbMgr_.destroy(ctx_);
     cmdMgr_.destroy(ctx_);

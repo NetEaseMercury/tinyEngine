@@ -11,12 +11,15 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
     vec4 materialTint;
     vec4 boxMaterialTint;
+    vec4 emissive;       // rgb = pre-multiplied emissive, w = intensity
 } ubo;
 
 layout(binding = 1) uniform sampler2D texSampler;
 layout(binding = 2) uniform sampler2D normalSampler;
 
 void main() {
-    vec4 tex = texture(texSampler, fragTexCoord);
-    outColor = vec4(tex.rgb * ubo.materialTint.rgb, tex.a);
+    vec4 tex    = texture(texSampler, fragTexCoord);
+    vec3 color  = tex.rgb * ubo.materialTint.rgb;
+    vec3 emit   = ubo.emissive.rgb;
+    outColor    = vec4(color + emit, tex.a);
 }

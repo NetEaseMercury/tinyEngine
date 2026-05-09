@@ -117,6 +117,7 @@ bool SceneManager::removeBox(RenderEntityId id, const VulkanContext& ctx, const 
     auto it = boxes_.find(id);
     if (it == boxes_.end()) return false;
     boxes_.erase(it);
+    boxMaterialIds_.erase(id);
     rebuildInstanceBuffer(ctx, bufMgr);
     return true;
 }
@@ -133,6 +134,12 @@ void SceneManager::setBoxPosition(RenderEntityId id, const glm::vec3& pos,
     if (!boxes_.count(id)) return;
     boxes_[id] = pos;
     rebuildInstanceBuffer(ctx, bufMgr);
+}
+
+uint32_t SceneManager::getBoxMaterialId(RenderEntityId eid) const
+{
+    auto it = boxMaterialIds_.find(eid);
+    return (it != boxMaterialIds_.end()) ? it->second : 0u;
 }
 
 void SceneManager::rebuildInstanceBuffer(const VulkanContext& ctx, const BufferManager& bufMgr)

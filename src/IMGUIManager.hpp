@@ -173,4 +173,9 @@ private:
 
 	Application* vulkanRender = nullptr;
 
+	// Material panel state
+	uint32_t editingMaterialId_ = 0;
+	char     matAlbedoPath_[1024]{};
+	char     matNormalPath_[1024]{};
+
 };

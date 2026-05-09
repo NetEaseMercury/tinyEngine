@@ -24,6 +24,7 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
     alignas(16) glm::vec4 materialTint;
     alignas(16) glm::vec4 boxMaterialTint;
+    alignas(16) glm::vec4 emissive; // rgb = emissive color, w = intensity
 };
 
 struct QueueFamilyIndices {

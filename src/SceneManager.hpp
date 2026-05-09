@@ -42,6 +42,13 @@ public:
     const std::vector<RenderEntityId>&                    getBoxRangeEntityIds() const { return boxRangeEntityIds_; }
     const std::unordered_map<RenderEntityId, glm::vec3>&  getBoxes()             const { return boxes_; }
 
+    // Material assignment (uint32_t == MaterialId, avoids circular header dependency)
+    void     setModelMaterialId(uint32_t id)                          { modelMaterialId_ = id; }
+    uint32_t getModelMaterialId()                              const   { return modelMaterialId_; }
+    void     setBoxMaterialId(RenderEntityId eid, uint32_t id)        { boxMaterialIds_[eid] = id; }
+    uint32_t getBoxMaterialId(RenderEntityId eid)              const;
+    bool     hasBoxMaterialId(RenderEntityId eid)              const   { return boxMaterialIds_.count(eid) > 0; }
+
 private:
     std::vector<Vertex>    modelVertices_;
     std::vector<uint32_t>  modelIndices_;
@@ -55,6 +62,9 @@ private:
     std::unordered_map<RenderEntityId, glm::vec3> boxes_;
     std::vector<RenderEntityId>                   boxRangeEntityIds_;
     RenderEntityId nextId_ = 1;
+
+    uint32_t                                      modelMaterialId_ = 0;
+    std::unordered_map<RenderEntityId, uint32_t>  boxMaterialIds_;
 
     VkBuffer       vertexBuffer_{};     VkDeviceMemory vertexMemory_{};
     VkBuffer       indexBuffer_{};      VkDeviceMemory indexMemory_{};

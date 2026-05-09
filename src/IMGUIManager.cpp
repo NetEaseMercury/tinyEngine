@@ -279,7 +279,6 @@ void UIManager::prepareFrame()
     if (vulkanRender) {
         ImGui::Separator();
         ImGui::Text("Main model (scene mesh)");
-        ImGui::ColorEdit3("Scene model RGB tint", glm::value_ptr(vulkanRender->materialTintRgb));
         ImGui::Text("Pick: left-click mesh or box in this window.");
         ImGui::Text("Main model selected: %s", vulkanRender->mainModelSelected ? "yes" : "no");
         ImGui::Text("Picked box entity: %llu",
@@ -294,9 +293,6 @@ void UIManager::prepareFrame()
 
     ImGui::Separator();
     ImGui::Text("Box Entity");
-    if (vulkanRender) {
-        ImGui::ColorEdit3("Box RGB tint", glm::value_ptr(vulkanRender->boxMaterialTintRgb));
-    }
     ImGui::InputFloat3("Box Position", boxPosition);
     if (ImGui::Button("Add Box")) {
         if (vulkanRender) {
@@ -309,6 +305,107 @@ void UIManager::prepareFrame()
     if (ImGui::Button("Delete Box")) {
         if (vulkanRender) {
             vulkanRender->removeBox(static_cast<Application::RenderEntityId>(deleteBoxId));
+        }
+    }
+
+    // ── Material Panel ────────────────────────────────────────────────────────
+    if (vulkanRender) {
+        ImGui::Separator();
+        ImGui::Text("Materials");
+
+        MaterialManager& matMgr = vulkanRender->getMaterialManager();
+        const auto& allIds = matMgr.getAllMaterialIds();
+
+        // Sync editing selection to the picked object's material
+        if (vulkanRender->selectedMaterialId != kInvalidMaterialId &&
+            matMgr.isValid(vulkanRender->selectedMaterialId))
+        {
+            editingMaterialId_ = vulkanRender->selectedMaterialId;
+        }
+        if (!matMgr.isValid(editingMaterialId_) && !allIds.empty())
+            editingMaterialId_ = allIds.front();
+
+        // Material list
+        if (ImGui::BeginListBox("##materials", ImVec2(-1, 80.f))) {
+            for (MaterialId id : allIds) {
+                const bool sel = (id == editingMaterialId_);
+                char label[256];
+                snprintf(label, sizeof(label), "[%u] %s (%s)",
+                         id, matMgr.getMaterialName(id).c_str(),
+                         matMgr.getMaterialType(id) == MaterialType::Mesh ? "Mesh" : "Box");
+                if (ImGui::Selectable(label, sel)) {
+                    editingMaterialId_ = id;
+                    // Sync texture path buffers to this material
+                    const std::string& ap = matMgr.getAlbedoPath(id);
+                    const std::string& np = matMgr.getNormalPath(id);
+                    snprintf(matAlbedoPath_, sizeof(matAlbedoPath_), "%s", ap.c_str());
+                    snprintf(matNormalPath_, sizeof(matNormalPath_), "%s", np.c_str());
+                }
+            }
+            ImGui::EndListBox();
+        }
+
+        // Create new material
+        if (ImGui::Button("+ Mesh Material")) {
+            MaterialId newId = vulkanRender->createMeshMaterial("New Mesh", "", "", MaterialParams{});
+            editingMaterialId_ = newId;
+            matAlbedoPath_[0] = '\0';
+            matNormalPath_[0] = '\0';
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("+ Box Material")) {
+            MaterialId newId = vulkanRender->createBoxMaterial("New Box", MaterialParams{});
+            editingMaterialId_ = newId;
+        }
+
+        // Edit selected material
+        if (matMgr.isValid(editingMaterialId_)) {
+            ImGui::Separator();
+            ImGui::Text("Editing: [%u]", editingMaterialId_);
+            MaterialParams& p = matMgr.getParamsMut(editingMaterialId_);
+
+            char nameBuf[256];
+            snprintf(nameBuf, sizeof(nameBuf), "%s", matMgr.getMaterialName(editingMaterialId_).c_str());
+            if (ImGui::InputText("Name##mat", nameBuf, sizeof(nameBuf)))
+                matMgr.setMaterialName(editingMaterialId_, nameBuf);
+
+            ImGui::ColorEdit4("Base Color##mat",          &p.baseColor.x);
+            ImGui::SliderFloat("Roughness##mat",          &p.roughness,          0.f, 1.f);
+            ImGui::SliderFloat("Metallic##mat",           &p.metallic,           0.f, 1.f);
+            ImGui::SliderFloat("Emissive Intensity##mat", &p.emissiveIntensity,  0.f, 10.f);
+            ImGui::ColorEdit3("Emissive Color##mat",      &p.emissiveColor.x);
+
+            if (matMgr.getMaterialType(editingMaterialId_) == MaterialType::Mesh) {
+                ImGui::Separator();
+                ImGui::Text("Textures (leave blank for default white/normal)");
+                ImGui::InputText("Albedo##mat", matAlbedoPath_, sizeof(matAlbedoPath_));
+                ImGui::SameLine();
+                if (ImGui::Button("Load##albedo"))
+                    vulkanRender->setMaterialAlbedo(editingMaterialId_, matAlbedoPath_);
+
+                ImGui::InputText("Normal##mat", matNormalPath_, sizeof(matNormalPath_));
+                ImGui::SameLine();
+                if (ImGui::Button("Load##normal"))
+                    vulkanRender->setMaterialNormal(editingMaterialId_, matNormalPath_);
+            }
+
+            ImGui::Separator();
+            if (ImGui::Button("Assign to Selected")) {
+                if (vulkanRender->mainModelSelected)
+                    vulkanRender->setModelMaterial(editingMaterialId_);
+                else if (vulkanRender->pickedBoxEntityId != 0)
+                    vulkanRender->setBoxMaterial(vulkanRender->pickedBoxEntityId, editingMaterialId_);
+            }
+
+            if (matMgr.isDeletable(editingMaterialId_)) {
+                ImGui::SameLine();
+                if (ImGui::Button("Delete##mat")) {
+                    vulkanRender->destroyMaterial(editingMaterialId_);
+                    editingMaterialId_ = allIds.empty() ? kInvalidMaterialId : allIds.front();
+                    matAlbedoPath_[0] = '\0';
+                    matNormalPath_[0] = '\0';
+                }
+            }
         }
     }
 

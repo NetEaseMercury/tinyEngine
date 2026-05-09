@@ -11,9 +11,11 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
     vec4 materialTint;
     vec4 boxMaterialTint;
+    vec4 emissive;       // rgb = pre-multiplied emissive, w = intensity
 } ubo;
 
 void main() {
-    vec3 base = vec3(0.88, 0.88, 0.90);
-    outColor = vec4(base * ubo.boxMaterialTint.rgb, 1.0);
+    vec3 base  = vec3(0.88, 0.88, 0.90) * ubo.boxMaterialTint.rgb;
+    vec3 emit  = ubo.emissive.rgb;
+    outColor   = vec4(base + emit, 1.0);
 }
