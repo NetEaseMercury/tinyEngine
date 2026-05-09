@@ -1,5 +1,5 @@
 #include "IMGUIManager.hpp"
-#include "VulkanRender.hpp"
+#include "Application.hpp"
 #include "ImGuizmo.h"
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -85,10 +85,10 @@ void UIManager::initImGuiVulkanBackend()
 	init_info.Queue = Queue;
 	init_info.PipelineCache = PipelineCache;
 	init_info.DescriptorPoolSize = 1024;
-	init_info.RenderPass = vulkanRender->getRenderPass();
+	init_info.RenderPass = vulkanRender->getMainRenderPass();
 	init_info.Subpass = 0;
 	init_info.MinImageCount = 2;
-	init_info.ImageCount = vulkanRender->swapChainImageCount();
+	init_info.ImageCount = vulkanRender->getSwapChainImageCount();
 	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 	init_info.Allocator = Allocator;
 	init_info.CheckVkResultFn = check_vk_result;
@@ -114,9 +114,9 @@ void UIManager::initIMGUI()
 }
 
 /** @brief 见 IMGUIManager.hpp：swapchain 重建后重绑 ImGui 与新的 RenderPass */
-void UIManager::reloadImGuiVulkanAfterSwapchainRecreate(VulkanRender* render)
+void UIManager::reloadImGuiVulkanAfterSwapchainRecreate(Application* app)
 {
-	vulkanRender = render;
+	vulkanRender = app;
 	ImGui_ImplVulkan_Shutdown();
 	initImGuiVulkanBackend();
 }
@@ -308,7 +308,7 @@ void UIManager::prepareFrame()
     ImGui::InputScalar("Delete Box ID", ImGuiDataType_U64, &deleteBoxId);
     if (ImGui::Button("Delete Box")) {
         if (vulkanRender) {
-            vulkanRender->removeBox(static_cast<VulkanRender::RenderEntityId>(deleteBoxId));
+            vulkanRender->removeBox(static_cast<Application::RenderEntityId>(deleteBoxId));
         }
     }
 

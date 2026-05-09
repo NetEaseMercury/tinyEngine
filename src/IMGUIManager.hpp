@@ -14,7 +14,7 @@
 
 #include <cstdint>
 
-class VulkanRender;
+class Application;
 
 /**
  * @class UIManager
@@ -59,7 +59,7 @@ public:
 	/**
 	 * @brief 交换链重建后：Shutdown ImGui Vulkan 后端并用新的 RenderPass/ImageCount 重新 Init。
 	 */
-	void reloadImGuiVulkanAfterSwapchainRecreate(VulkanRender* render);
+	void reloadImGuiVulkanAfterSwapchainRecreate(Application* app);
 
 	/**
 	 * @brief 设置逻辑设备与物理设备句柄，供 ImGui_ImplVulkan_Init 使用。
@@ -87,7 +87,7 @@ public:
 	void setModelDefaultPath();
 
 	/** @brief 关联场景渲染器，供面板读写选中物体、矩阵与资源路径 */
-	void setVulkanRender(VulkanRender* render) { vulkanRender = render; }
+	void setVulkanRender(Application* app) { vulkanRender = app; }
 
 	/** @brief 返回当前清屏颜色（RGBA） */
 	[[nodiscard]] ImVec4 getClearColor() const { return clear_color; }
@@ -171,6 +171,6 @@ private:
 
 	uint64_t deleteBoxId = 0;
 
-	VulkanRender* vulkanRender = nullptr;
+	Application* vulkanRender = nullptr;
 
 };

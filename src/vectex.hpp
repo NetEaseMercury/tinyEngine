@@ -8,7 +8,6 @@
 #include <array>
 #include <vulkan/vulkan_core.h>
 
-// ���嶥����Ϣ
 struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
