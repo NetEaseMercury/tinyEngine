@@ -2,6 +2,7 @@
 #include "vectex.hpp"
 #include <array>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 
 std::vector<char> PipelineManager::readFile(const std::string& path)
@@ -34,6 +35,8 @@ void PipelineManager::create(const VulkanContext& ctx, const RenderPassManager& 
                              VkExtent2D extent)
 {
     createDescriptorSetLayouts(ctx);
+    cachedMainRenderPass_ = rpMgr.getMainRenderPass();
+    cachedExtent_         = extent;
     createMainPipeline(ctx, rpMgr.getMainRenderPass(), vertSpv, fragSpv, extent);
     createBoxPipeline(ctx, rpMgr.getMainRenderPass(), boxVertSpv, boxFragSpv, extent);
 
@@ -49,6 +52,8 @@ void PipelineManager::recreate(const VulkanContext& ctx, const RenderPassManager
                                VkExtent2D extent)
 {
     destroyPipelines(ctx);
+    cachedMainRenderPass_ = rpMgr.getMainRenderPass();
+    cachedExtent_         = extent;
     createMainPipeline(ctx, rpMgr.getMainRenderPass(), vertSpv, fragSpv, extent);
     createBoxPipeline(ctx, rpMgr.getMainRenderPass(), boxVertSpv, boxFragSpv, extent);
     const auto p = vertSpv.find_last_of("/\\");
@@ -67,6 +72,12 @@ void PipelineManager::destroy(const VulkanContext& ctx)
 void PipelineManager::destroyPipelines(const VulkanContext& ctx)
 {
     auto dev = ctx.getDevice();
+    // Dynamic-shader pipelines first (they share the layouts below).
+    for (auto& [k, p] : dynamicPipelines_) {
+        if (p != VK_NULL_HANDLE) vkDestroyPipeline(dev, p, nullptr);
+    }
+    dynamicPipelines_.clear();
+
     if (pickPipeline_       != VK_NULL_HANDLE) { vkDestroyPipeline(dev, pickPipeline_, nullptr);            pickPipeline_       = VK_NULL_HANDLE; }
     if (pickPipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(dev, pickPipelineLayout_, nullptr); pickPipelineLayout_ = VK_NULL_HANDLE; }
     if (boxPipeline_        != VK_NULL_HANDLE) { vkDestroyPipeline(dev, boxPipeline_, nullptr);             boxPipeline_        = VK_NULL_HANDLE; }
@@ -131,57 +142,7 @@ void PipelineManager::createMainPipeline(const VulkanContext& ctx, VkRenderPass 
                                          const std::string& vertSpv, const std::string& fragSpv,
                                          VkExtent2D extent)
 {
-    auto vc = readFile(vertSpv);
-    auto fc = readFile(fragSpv);
-    if (vc.empty() || fc.empty()) throw std::runtime_error("Failed to read main shader SPIR-V!");
-    VkShaderModule vm = createShaderModule(ctx, vc);
-    VkShaderModule fm = createShaderModule(ctx, fc);
-    VkPipelineShaderStageCreateInfo stages[] = { makeStage(VK_SHADER_STAGE_VERTEX_BIT, vm),
-                                                  makeStage(VK_SHADER_STAGE_FRAGMENT_BIT, fm) };
-
-    auto bindDesc = Vertex::getBindingDescription();
-    auto attrDesc = Vertex::getAttributeDescriptions();
-    VkPipelineVertexInputStateCreateInfo vin{};
-    vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vin.vertexBindingDescriptionCount   = 1;
-    vin.pVertexBindingDescriptions      = &bindDesc;
-    vin.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrDesc.size());
-    vin.pVertexAttributeDescriptions    = attrDesc.data();
-
-    VkPipelineInputAssemblyStateCreateInfo ia{};
-    ia.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    VkViewport vp{ 0.f, 0.f, (float)extent.width, (float)extent.height, 0.f, 1.f };
-    VkRect2D sc{ {0,0}, extent };
-    VkPipelineViewportStateCreateInfo vpState{};
-    vpState.sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    vpState.viewportCount = 1; vpState.pViewports = &vp;
-    vpState.scissorCount  = 1; vpState.pScissors  = &sc;
-
-    VkPipelineRasterizationStateCreateInfo rs{};
-    rs.sType     = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rs.polygonMode = VK_POLYGON_MODE_FILL; rs.lineWidth = 1.f;
-    rs.cullMode  = VK_CULL_MODE_BACK_BIT;
-    rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-
-    VkPipelineMultisampleStateCreateInfo ms{};
-    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineDepthStencilStateCreateInfo ds{};
-    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    ds.depthTestEnable = VK_TRUE; ds.depthWriteEnable = VK_TRUE;
-    ds.depthCompareOp  = VK_COMPARE_OP_LESS;
-
-    VkPipelineColorBlendAttachmentState cba{};
-    cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    cba.blendEnable = VK_FALSE;
-    VkPipelineColorBlendStateCreateInfo cb{};
-    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    cb.attachmentCount = 1; cb.pAttachments = &cba;
-
+    // Layout is shader-independent and reused by every dynamic mesh pipeline.
     VkPushConstantRange pcr{};
     pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pcr.size       = sizeof(glm::mat4);
@@ -193,103 +154,24 @@ void PipelineManager::createMainPipeline(const VulkanContext& ctx, VkRenderPass 
     if (vkCreatePipelineLayout(ctx.getDevice(), &pli, nullptr, &mainPipelineLayout_) != VK_SUCCESS)
         throw std::runtime_error("Failed to create main pipeline layout!");
 
-    VkGraphicsPipelineCreateInfo gp{};
-    gp.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    gp.stageCount          = 2; gp.pStages = stages;
-    gp.pVertexInputState   = &vin; gp.pInputAssemblyState = &ia;
-    gp.pViewportState      = &vpState; gp.pRasterizationState = &rs;
-    gp.pMultisampleState   = &ms; gp.pDepthStencilState = &ds;
-    gp.pColorBlendState    = &cb;
-    gp.layout              = mainPipelineLayout_;
-    gp.renderPass          = renderPass;
-    if (vkCreateGraphicsPipelines(ctx.getDevice(), VK_NULL_HANDLE, 1, &gp, nullptr, &mainPipeline_) != VK_SUCCESS)
+    mainPipeline_ = buildMainPipeline(ctx, renderPass, vertSpv, fragSpv, extent);
+    if (mainPipeline_ == VK_NULL_HANDLE)
         throw std::runtime_error("Failed to create main graphics pipeline!");
-
-    vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
-    vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
 }
 
 void PipelineManager::createBoxPipeline(const VulkanContext& ctx, VkRenderPass renderPass,
                                          const std::string& vertSpv, const std::string& fragSpv,
                                          VkExtent2D extent)
 {
-    auto vc = readFile(vertSpv);
-    auto fc = readFile(fragSpv);
-    if (vc.empty() || fc.empty()) throw std::runtime_error("Failed to read box shader SPIR-V!");
-    VkShaderModule vm = createShaderModule(ctx, vc);
-    VkShaderModule fm = createShaderModule(ctx, fc);
-    VkPipelineShaderStageCreateInfo stages[] = { makeStage(VK_SHADER_STAGE_VERTEX_BIT, vm),
-                                                  makeStage(VK_SHADER_STAGE_FRAGMENT_BIT, fm) };
-
-    auto vertBind = Vertex::getBindingDescription();
-    auto instBind = InstanceData::getBindingDescription();
-    std::array<VkVertexInputBindingDescription, 2> binds{ vertBind, instBind };
-    auto vertAttr = Vertex::getAttributeDescriptions();
-    auto instAttr = InstanceData::getAttributeDescription();
-    std::array<VkVertexInputAttributeDescription, 4> attrs{
-        vertAttr[0], vertAttr[1], vertAttr[2], instAttr };
-
-    VkPipelineVertexInputStateCreateInfo vin{};
-    vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vin.vertexBindingDescriptionCount   = static_cast<uint32_t>(binds.size());
-    vin.pVertexBindingDescriptions      = binds.data();
-    vin.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrs.size());
-    vin.pVertexAttributeDescriptions    = attrs.data();
-
-    VkPipelineInputAssemblyStateCreateInfo ia{};
-    ia.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    VkViewport vp{ 0.f, 0.f, (float)extent.width, (float)extent.height, 0.f, 1.f };
-    VkRect2D sc{ {0,0}, extent };
-    VkPipelineViewportStateCreateInfo vpState{};
-    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    vpState.viewportCount = 1; vpState.pViewports = &vp;
-    vpState.scissorCount  = 1; vpState.pScissors  = &sc;
-
-    VkPipelineRasterizationStateCreateInfo rs{};
-    rs.sType     = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rs.polygonMode = VK_POLYGON_MODE_FILL; rs.lineWidth = 1.f;
-    rs.cullMode  = VK_CULL_MODE_BACK_BIT;
-    rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-
-    VkPipelineMultisampleStateCreateInfo ms{};
-    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineDepthStencilStateCreateInfo ds{};
-    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    ds.depthTestEnable = VK_TRUE; ds.depthWriteEnable = VK_TRUE;
-    ds.depthCompareOp  = VK_COMPARE_OP_LESS;
-
-    VkPipelineColorBlendAttachmentState cba{};
-    cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
-                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    cba.blendEnable = VK_FALSE;
-    VkPipelineColorBlendStateCreateInfo cb{};
-    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    cb.attachmentCount = 1; cb.pAttachments = &cba;
-
     VkPipelineLayoutCreateInfo pli{};
     pli.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pli.setLayoutCount = 1; pli.pSetLayouts = &boxDescSetLayout_;
     if (vkCreatePipelineLayout(ctx.getDevice(), &pli, nullptr, &boxPipelineLayout_) != VK_SUCCESS)
         throw std::runtime_error("Failed to create box pipeline layout!");
 
-    VkGraphicsPipelineCreateInfo gp{};
-    gp.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    gp.stageCount          = 2; gp.pStages = stages;
-    gp.pVertexInputState   = &vin; gp.pInputAssemblyState = &ia;
-    gp.pViewportState      = &vpState; gp.pRasterizationState = &rs;
-    gp.pMultisampleState   = &ms; gp.pDepthStencilState = &ds;
-    gp.pColorBlendState    = &cb;
-    gp.layout              = boxPipelineLayout_;
-    gp.renderPass          = renderPass;
-    if (vkCreateGraphicsPipelines(ctx.getDevice(), VK_NULL_HANDLE, 1, &gp, nullptr, &boxPipeline_) != VK_SUCCESS)
+    boxPipeline_ = buildBoxPipeline(ctx, renderPass, vertSpv, fragSpv, extent);
+    if (boxPipeline_ == VK_NULL_HANDLE)
         throw std::runtime_error("Failed to create box graphics pipeline!");
-
-    vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
-    vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
 }
 
 void PipelineManager::createPickPipeline(const VulkanContext& ctx, VkRenderPass pickRenderPass,
@@ -381,4 +263,198 @@ void PipelineManager::createPickPipeline(const VulkanContext& ctx, VkRenderPass 
 
     vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
     vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
+}
+
+// ── Dynamic-shader pipeline builders ──────────────────────────────────────────
+// These functions only create VkPipeline (no layout) and return the handle.
+// On failure they return VK_NULL_HANDLE without throwing, so acquirePipeline
+// can fall back to the default pipeline.
+
+VkPipeline PipelineManager::buildMainPipeline(const VulkanContext& ctx, VkRenderPass renderPass,
+                                              const std::string& vertSpv, const std::string& fragSpv,
+                                              VkExtent2D extent)
+{
+    auto vc = readFile(vertSpv);
+    auto fc = readFile(fragSpv);
+    if (vc.empty() || fc.empty()) {
+        std::cerr << "[PipelineManager] buildMainPipeline: cannot read "
+                  << vertSpv << " / " << fragSpv << "\n";
+        return VK_NULL_HANDLE;
+    }
+    VkShaderModule vm = createShaderModule(ctx, vc);
+    VkShaderModule fm = createShaderModule(ctx, fc);
+    VkPipelineShaderStageCreateInfo stages[] = { makeStage(VK_SHADER_STAGE_VERTEX_BIT, vm),
+                                                  makeStage(VK_SHADER_STAGE_FRAGMENT_BIT, fm) };
+
+    auto bindDesc = Vertex::getBindingDescription();
+    auto attrDesc = Vertex::getAttributeDescriptions();
+    VkPipelineVertexInputStateCreateInfo vin{};
+    vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vin.vertexBindingDescriptionCount   = 1; vin.pVertexBindingDescriptions = &bindDesc;
+    vin.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrDesc.size());
+    vin.pVertexAttributeDescriptions    = attrDesc.data();
+
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkViewport vp{ 0.f, 0.f, (float)extent.width, (float)extent.height, 0.f, 1.f };
+    VkRect2D sc{ {0,0}, extent };
+    VkPipelineViewportStateCreateInfo vpState{};
+    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpState.viewportCount = 1; vpState.pViewports = &vp;
+    vpState.scissorCount  = 1; vpState.pScissors  = &sc;
+
+    VkPipelineRasterizationStateCreateInfo rs{};
+    rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rs.polygonMode = VK_POLYGON_MODE_FILL; rs.lineWidth = 1.f;
+    rs.cullMode  = VK_CULL_MODE_BACK_BIT;
+    rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo ds{};
+    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ds.depthTestEnable = VK_TRUE; ds.depthWriteEnable = VK_TRUE;
+    ds.depthCompareOp  = VK_COMPARE_OP_LESS;
+
+    VkPipelineColorBlendAttachmentState cba{};
+    cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    cba.blendEnable = VK_FALSE;
+    VkPipelineColorBlendStateCreateInfo cb{};
+    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    cb.attachmentCount = 1; cb.pAttachments = &cba;
+
+    VkGraphicsPipelineCreateInfo gp{};
+    gp.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    gp.stageCount          = 2; gp.pStages = stages;
+    gp.pVertexInputState   = &vin; gp.pInputAssemblyState = &ia;
+    gp.pViewportState      = &vpState; gp.pRasterizationState = &rs;
+    gp.pMultisampleState   = &ms; gp.pDepthStencilState = &ds;
+    gp.pColorBlendState    = &cb;
+    gp.layout              = mainPipelineLayout_;
+    gp.renderPass          = renderPass;
+
+    VkPipeline pipe = VK_NULL_HANDLE;
+    VkResult res = vkCreateGraphicsPipelines(ctx.getDevice(), VK_NULL_HANDLE, 1, &gp, nullptr, &pipe);
+    vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
+    vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
+    if (res != VK_SUCCESS) return VK_NULL_HANDLE;
+    return pipe;
+}
+
+VkPipeline PipelineManager::buildBoxPipeline(const VulkanContext& ctx, VkRenderPass renderPass,
+                                             const std::string& vertSpv, const std::string& fragSpv,
+                                             VkExtent2D extent)
+{
+    auto vc = readFile(vertSpv);
+    auto fc = readFile(fragSpv);
+    if (vc.empty() || fc.empty()) {
+        std::cerr << "[PipelineManager] buildBoxPipeline: cannot read "
+                  << vertSpv << " / " << fragSpv << "\n";
+        return VK_NULL_HANDLE;
+    }
+    VkShaderModule vm = createShaderModule(ctx, vc);
+    VkShaderModule fm = createShaderModule(ctx, fc);
+    VkPipelineShaderStageCreateInfo stages[] = { makeStage(VK_SHADER_STAGE_VERTEX_BIT, vm),
+                                                  makeStage(VK_SHADER_STAGE_FRAGMENT_BIT, fm) };
+
+    auto vertBind = Vertex::getBindingDescription();
+    auto instBind = InstanceData::getBindingDescription();
+    std::array<VkVertexInputBindingDescription, 2> binds{ vertBind, instBind };
+    auto vertAttr = Vertex::getAttributeDescriptions();
+    auto instAttr = InstanceData::getAttributeDescription();
+    std::array<VkVertexInputAttributeDescription, 4> attrs{
+        vertAttr[0], vertAttr[1], vertAttr[2], instAttr };
+
+    VkPipelineVertexInputStateCreateInfo vin{};
+    vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vin.vertexBindingDescriptionCount   = static_cast<uint32_t>(binds.size());
+    vin.pVertexBindingDescriptions      = binds.data();
+    vin.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrs.size());
+    vin.pVertexAttributeDescriptions    = attrs.data();
+
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkViewport vp{ 0.f, 0.f, (float)extent.width, (float)extent.height, 0.f, 1.f };
+    VkRect2D sc{ {0,0}, extent };
+    VkPipelineViewportStateCreateInfo vpState{};
+    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpState.viewportCount = 1; vpState.pViewports = &vp;
+    vpState.scissorCount  = 1; vpState.pScissors  = &sc;
+
+    VkPipelineRasterizationStateCreateInfo rs{};
+    rs.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rs.polygonMode = VK_POLYGON_MODE_FILL; rs.lineWidth = 1.f;
+    rs.cullMode  = VK_CULL_MODE_BACK_BIT;
+    rs.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo ds{};
+    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ds.depthTestEnable = VK_TRUE; ds.depthWriteEnable = VK_TRUE;
+    ds.depthCompareOp  = VK_COMPARE_OP_LESS;
+
+    VkPipelineColorBlendAttachmentState cba{};
+    cba.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                         VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    cba.blendEnable = VK_FALSE;
+    VkPipelineColorBlendStateCreateInfo cb{};
+    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    cb.attachmentCount = 1; cb.pAttachments = &cba;
+
+    VkGraphicsPipelineCreateInfo gp{};
+    gp.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    gp.stageCount          = 2; gp.pStages = stages;
+    gp.pVertexInputState   = &vin; gp.pInputAssemblyState = &ia;
+    gp.pViewportState      = &vpState; gp.pRasterizationState = &rs;
+    gp.pMultisampleState   = &ms; gp.pDepthStencilState = &ds;
+    gp.pColorBlendState    = &cb;
+    gp.layout              = boxPipelineLayout_;
+    gp.renderPass          = renderPass;
+
+    VkPipeline pipe = VK_NULL_HANDLE;
+    VkResult res = vkCreateGraphicsPipelines(ctx.getDevice(), VK_NULL_HANDLE, 1, &gp, nullptr, &pipe);
+    vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
+    vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
+    if (res != VK_SUCCESS) return VK_NULL_HANDLE;
+    return pipe;
+}
+
+VkPipeline PipelineManager::acquirePipeline(const VulkanContext& ctx,
+                                            PipelineVariant variant,
+                                            const std::string& vertSpvPath,
+                                            const std::string& fragSpvPath)
+{
+    // Empty paths -> use default pipeline (created in create()/recreate()).
+    if (vertSpvPath.empty() || fragSpvPath.empty()) {
+        return (variant == PipelineVariant::Mesh) ? mainPipeline_ : boxPipeline_;
+    }
+
+    const std::string key = (variant == PipelineVariant::Mesh ? "M|" : "B|")
+                          + vertSpvPath + "|" + fragSpvPath;
+    auto it = dynamicPipelines_.find(key);
+    if (it != dynamicPipelines_.end()) return it->second;
+
+    VkPipeline pipe = (variant == PipelineVariant::Mesh)
+        ? buildMainPipeline(ctx, cachedMainRenderPass_, vertSpvPath, fragSpvPath, cachedExtent_)
+        : buildBoxPipeline (ctx, cachedMainRenderPass_, vertSpvPath, fragSpvPath, cachedExtent_);
+
+    if (pipe == VK_NULL_HANDLE) {
+        std::cerr << "[PipelineManager] acquirePipeline failed for "
+                  << vertSpvPath << " / " << fragSpvPath
+                  << ", falling back to default\n";
+        return (variant == PipelineVariant::Mesh) ? mainPipeline_ : boxPipeline_;
+    }
+
+    dynamicPipelines_[key] = pipe;
+    return pipe;
 }

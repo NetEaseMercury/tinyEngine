@@ -1,9 +1,11 @@
 #include "MaterialManager.hpp"
+#include "MaterialAssetLoader.hpp"
 #include "VulkanTypes.hpp"
 // STB_IMAGE_IMPLEMENTATION is defined globally — undefine here to avoid
 // duplicate symbol errors with TextureManager.obj.
 #undef STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <iostream>
 #include <stdexcept>
 #include <cstring>
 #include <array>
@@ -625,4 +627,59 @@ void MaterialManager::reloadDefaultMeshTextures(const std::string& texturePath,
 {
     if (texturePath.empty()) return;
     setAlbedoPath(defaultMeshId_, texturePath, ctx, cmdMgr, bufMgr, fbMgr, pipeMgr);
+}
+
+// ── Asset-based material loading & pipeline resolution ───────────────────────────
+
+MaterialId MaterialManager::loadMaterialFromAsset(const std::string& astRelPath,
+                                                  const VulkanContext& ctx,
+                                                  const CommandManager& cmdMgr,
+                                                  const BufferManager& bufMgr,
+                                                  const FramebufferManager& fbMgr,
+                                                  const PipelineManager& pipeMgr)
+{
+    MaterialAssetDesc desc;
+    std::string err;
+    if (!MaterialAssetLoader::load(astRelPath, desc, &err)) {
+        std::cerr << "[MaterialAsset] load failed (" << astRelPath << "): " << err << "\n";
+        return kInvalidMaterialId;
+    }
+
+    MaterialId id = kInvalidMaterialId;
+    try {
+        if (desc.type == MaterialType::Mesh) {
+            id = createMeshMaterial(desc.name.empty() ? std::string("AssetMaterial") : desc.name,
+                                    desc.albedoPath, desc.normalPath, desc.params,
+                                    ctx, cmdMgr, bufMgr, fbMgr, pipeMgr);
+        } else {
+            id = createBoxMaterial(desc.name.empty() ? std::string("AssetMaterial") : desc.name,
+                                   desc.params, ctx, bufMgr, pipeMgr);
+        }
+    } catch (const std::exception& ex) {
+        std::cerr << "[MaterialAsset] creation failed (" << astRelPath << "): "
+                  << ex.what() << "\n";
+        return kInvalidMaterialId;
+    }
+
+    if (id == kInvalidMaterialId) return id;
+    MaterialEntry& e = materials_.at(id);
+    e.vertSpvPath = desc.vertSpv;
+    e.fragSpvPath = desc.fragSpv;
+    return id;
+}
+
+VkPipeline MaterialManager::getPipeline(MaterialId id,
+                                        const VulkanContext& ctx,
+                                        PipelineManager& pipeMgr) const
+{
+    auto it = materials_.find(id);
+    if (it == materials_.end()) {
+        // Unknown material -> safest is the default mesh pipeline.
+        return pipeMgr.getMainPipeline();
+    }
+    const MaterialEntry& e = it->second;
+    const PipelineVariant variant = (e.type == MaterialType::Mesh)
+                                  ? PipelineVariant::Mesh
+                                  : PipelineVariant::Box;
+    return pipeMgr.acquirePipeline(ctx, variant, e.vertSpvPath, e.fragSpvPath);
 }

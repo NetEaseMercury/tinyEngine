@@ -106,6 +106,15 @@ void Application::initVulkan()
                  swapChain_.getImageCount(), ui_->texturePath);
     sceneMgr_.setModelMaterialId(matMgr_.getDefaultMeshMaterialId());
 
+    // Try to apply the JSON material asset to the main model.
+    // On failure (file missing, parse error, texture missing) the default
+    // mesh material remains in effect.
+    {
+        const MaterialId mid = matMgr_.loadMaterialFromAsset(
+            "materials/mainmodel.ast", ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+        if (mid != kInvalidMaterialId) sceneMgr_.setModelMaterialId(mid);
+    }
+
     descMgr_.create(ctx_, swapChain_, pipeMgr_, bufMgr_);
 
     ui_->setVulkanInstance(ctx_.getInstance(), nullptr);
@@ -266,7 +275,8 @@ void Application::recordCommandBuffer(VkCommandBuffer cb, uint32_t imageIndex)
             ? sceneMgr_.getModelMaterialId()
             : matMgr_.getDefaultMeshMaterialId();
 
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeMgr_.getMainPipeline());
+        VkPipeline meshPipe = matMgr_.getPipeline(meshMat, ctx_, pipeMgr_);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipe);
         VkBuffer vb = sceneMgr_.getVertexBuffer(); VkDeviceSize off = 0;
         vkCmdBindVertexBuffers(cb, 0, 1, &vb, &off);
         vkCmdBindIndexBuffer(cb, sceneMgr_.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
@@ -282,8 +292,10 @@ void Application::recordCommandBuffer(VkCommandBuffer cb, uint32_t imageIndex)
     // GPU-instanced boxes — all share the default box material (preserves instancing)
     if (sceneMgr_.getInstanceCount() > 0 && sceneMgr_.getInstanceBuffer() != VK_NULL_HANDLE) {
         TINYENGINE(cb, "Box Geometry");
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeMgr_.getBoxPipeline());
-        VkDescriptorSet ds = matMgr_.getDescriptorSet(matMgr_.getDefaultBoxMaterialId(), imageIndex);
+        const MaterialId boxMat = matMgr_.getDefaultBoxMaterialId();
+        VkPipeline boxPipe = matMgr_.getPipeline(boxMat, ctx_, pipeMgr_);
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, boxPipe);
+        VkDescriptorSet ds = matMgr_.getDescriptorSet(boxMat, imageIndex);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                 pipeMgr_.getBoxPipelineLayout(), 0, 1, &ds, 0, nullptr);
         VkBuffer bufs[] = { sceneMgr_.getCubeVertexBuffer(), sceneMgr_.getInstanceBuffer() };
@@ -349,6 +361,13 @@ void Application::recreateSwapChain()
     matMgr_.init(ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_,
                  swapChain_.getImageCount(), ui_->texturePath);
     sceneMgr_.setModelMaterialId(matMgr_.getDefaultMeshMaterialId());
+
+    // Re-apply the asset material after swapchain recreate.
+    {
+        const MaterialId mid = matMgr_.loadMaterialFromAsset(
+            "materials/mainmodel.ast", ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+        if (mid != kInvalidMaterialId) sceneMgr_.setModelMaterialId(mid);
+    }
 
     descMgr_.create(ctx_, swapChain_, pipeMgr_, bufMgr_);
     pickSys_.create(ctx_, cmdMgr_);

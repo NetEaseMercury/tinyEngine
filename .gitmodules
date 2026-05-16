@@ -7,3 +7,6 @@
 [submodule "thirdParty/tinyobjloader"]
 	path = thirdParty/tinyobjloader
 	url = https://github.com/tinyobjloader/tinyobjloader.git
+[submodule "thirdParty/json"]
+	path = thirdParty/json
+	url = https://github.com/nlohmann/json.git

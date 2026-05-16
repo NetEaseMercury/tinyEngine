@@ -34,6 +34,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/stb_image
                 thirdParty/ImGuizmo
                 thirdParty/renderdoc
+                thirdParty/json/include
         )
 
 

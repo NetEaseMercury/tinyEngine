@@ -51,6 +51,25 @@ public:
                                  const VulkanContext& ctx, const BufferManager& bufMgr,
                                  const PipelineManager& pipeMgr);
 
+    // Load a material from a .ast (JSON) asset file.
+    //   astRelPath: relative to res/, e.g. "materials/mainmodel.ast".
+    // On success returns a valid MaterialId; on failure returns kInvalidMaterialId
+    // and prints the reason to stderr. The caller should fall back to a default
+    // material in that case.
+    MaterialId loadMaterialFromAsset(const std::string& astRelPath,
+                                     const VulkanContext& ctx, const CommandManager& cmdMgr,
+                                     const BufferManager& bufMgr, const FramebufferManager& fbMgr,
+                                     const PipelineManager& pipeMgr);
+
+    // Resolve the VkPipeline this material should be drawn with.
+    // Falls back to the default Mesh / Box pipeline when the material has
+    // no custom shader assigned. PipelineManager is non-const because it
+    // may have to lazily create a new pipeline for a previously unseen
+    // (vert,frag) pair.
+    VkPipeline getPipeline(MaterialId id,
+                           const VulkanContext& ctx,
+                           PipelineManager& pipeMgr) const;
+
     MaterialId cloneMaterial(MaterialId src,
                              const VulkanContext& ctx, const CommandManager& cmdMgr,
                              const BufferManager& bufMgr, const FramebufferManager& fbMgr,
@@ -121,6 +140,11 @@ private:
         std::vector<VkDescriptorSet> descSets;
 
         TextureGPU albedo, normal; // Mesh material textures
+
+        // Optional shader override (paths already resolved against res/).
+        // Empty -> use the default pipeline for this MaterialType.
+        std::string vertSpvPath;
+        std::string fragSpvPath;
     };
 
     std::unordered_map<MaterialId, MaterialEntry> materials_;
