@@ -78,4 +78,8 @@ private:
 
     void rebuildInstanceBuffer(const VulkanContext& ctx, const BufferManager& bufMgr);
     static void destroyBuf(const VulkanContext& ctx, VkBuffer& buf, VkDeviceMemory& mem);
+
+    // Format-specific loaders, dispatched by file extension inside loadModel().
+    void loadModelFromObj (const std::string& path, const glm::vec3& position, const BufferManager& bufMgr);
+    void loadModelFromGltf(const std::string& path, const glm::vec3& position, const BufferManager& bufMgr);
 };

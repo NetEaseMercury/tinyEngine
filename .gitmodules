@@ -10,3 +10,9 @@
 [submodule "thirdParty/json"]
 	path = thirdParty/json
 	url = https://github.com/nlohmann/json.git
+[submodule "cgltf"]
+	path = cgltf
+	url = https://github.com/jkuhlmann/cgltf
+[submodule "thirdParty/cgltf"]
+	path = thirdParty/cgltf
+	url = https://github.com/jkuhlmann/cgltf

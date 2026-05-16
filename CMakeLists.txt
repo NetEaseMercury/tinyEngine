@@ -35,6 +35,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/ImGuizmo
                 thirdParty/renderdoc
                 thirdParty/json/include
+                thirdParty/cgltf
         )
 
 
