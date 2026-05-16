@@ -24,7 +24,12 @@ struct UniformBufferObject {
     alignas(16) glm::mat4 proj;
     alignas(16) glm::vec4 materialTint;
     alignas(16) glm::vec4 boxMaterialTint;
-    alignas(16) glm::vec4 emissive; // rgb = emissive color, w = intensity
+    alignas(16) glm::vec4 emissive;     // rgb = emissive color, w = intensity
+    // PBR additions ─ all aligned to 16 bytes (std140-friendly)
+    alignas(16) glm::vec4 cameraPos;    // xyz = world camera position, w unused
+    alignas(16) glm::vec4 lightDir;     // xyz = world-space *to-light* direction (normalized)
+    alignas(16) glm::vec4 lightColor;   // rgb = radiance, a = ambient strength
+    alignas(16) glm::vec4 pbrFactors;   // x=metallic, y=roughness, z=ao, w=normalScale
 };
 
 struct QueueFamilyIndices {

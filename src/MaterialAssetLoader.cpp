@@ -68,8 +68,11 @@ bool MaterialAssetLoader::load(const std::string& astRelPath,
 
     if (j.contains("textures") && j["textures"].is_object()) {
         const auto& t = j["textures"];
-        desc.albedoPath = resolveRel(t.value("albedo", std::string{}));
-        desc.normalPath = resolveRel(t.value("normal", std::string{}));
+        desc.albedoPath            = resolveRel(t.value("albedo",            std::string{}));
+        desc.normalPath            = resolveRel(t.value("normal",            std::string{}));
+        desc.metallicRoughnessPath = resolveRel(t.value("metallicRoughness", std::string{}));
+        desc.aoPath                = resolveRel(t.value("ao",                std::string{}));
+        desc.emissivePath          = resolveRel(t.value("emissive",          std::string{}));
     }
 
     // Optional: model field. Either a plain string "models/xxx.obj"

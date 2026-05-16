@@ -42,10 +42,25 @@ public:
     MaterialId createMeshMaterial(const std::string& name,
                                   const std::string& albedoPath,
                                   const std::string& normalPath,
+                                  const std::string& metallicRoughnessPath,
+                                  const std::string& aoPath,
+                                  const std::string& emissivePath,
                                   const MaterialParams& params,
                                   const VulkanContext& ctx, const CommandManager& cmdMgr,
                                   const BufferManager& bufMgr, const FramebufferManager& fbMgr,
                                   const PipelineManager& pipeMgr);
+
+    // Backward-compatible overload (albedo + normal only).
+    MaterialId createMeshMaterial(const std::string& name,
+                                  const std::string& albedoPath,
+                                  const std::string& normalPath,
+                                  const MaterialParams& params,
+                                  const VulkanContext& ctx, const CommandManager& cmdMgr,
+                                  const BufferManager& bufMgr, const FramebufferManager& fbMgr,
+                                  const PipelineManager& pipeMgr) {
+        return createMeshMaterial(name, albedoPath, normalPath, "", "", "",
+                                  params, ctx, cmdMgr, bufMgr, fbMgr, pipeMgr);
+    }
 
     MaterialId createBoxMaterial(const std::string& name, const MaterialParams& params,
                                  const VulkanContext& ctx, const BufferManager& bufMgr,
@@ -139,7 +154,8 @@ private:
         std::vector<void*>           uboMapped;
         std::vector<VkDescriptorSet> descSets;
 
-        TextureGPU albedo, normal; // Mesh material textures
+        TextureGPU albedo, normal; // Mesh material textures (legacy)
+        TextureGPU metallicRoughness, ao, emissive; // PBR additions
 
         // Optional shader override (paths already resolved against res/).
         // Empty -> use the default pipeline for this MaterialType.
@@ -156,6 +172,7 @@ private:
 
     // Shared 1x1 fallback textures
     TextureGPU defaultAlbedo_, defaultNormal_;
+    TextureGPU defaultMR_, defaultAO_, defaultEmissive_;
     VkDescriptorPool pool_{};
 
     // Internal helpers

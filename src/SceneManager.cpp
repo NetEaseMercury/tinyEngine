@@ -1,4 +1,19 @@
 #include "SceneManager.hpp"
+// Workaround: tinyobjloader's embedded fast_float library marks SIMD-using
+// helpers as `FASTFLOAT_CONSTEXPR20 = constexpr` whenever the host stdlib
+// reports __cpp_lib_constexpr_algorithms >= 201806L. MSVC 19.43+ in C++20
+// mode satisfies that test but rejects the resulting constexpr functions
+// because they call non-constexpr byteswap/SIMD intrinsics. Pre-poison the
+// fast_float feature-detect include guard and supply non-constexpr stand-ins
+// before pulling tiny_obj_loader.h in.
+#define FASTFLOAT_CONSTEXPR_FEATURE_DETECT_H
+#define FASTFLOAT_CONSTEXPR14
+#define FASTFLOAT_HAS_BIT_CAST 0
+#define FASTFLOAT_HAS_IS_CONSTANT_EVALUATED 0
+#define FASTFLOAT_IF_CONSTEXPR17(x) if (x)
+#define FASTFLOAT_CONSTEXPR20
+#define FASTFLOAT_IS_CONSTEXPR 0
+#define FASTFLOAT_DETAIL_MUST_DEFINE_CONSTEXPR_VARIABLE 0
 #include <tiny_obj_loader.h>
 #define CGLTF_IMPLEMENTATION
 #include "cgltf.h"
@@ -6,7 +21,11 @@
 #include <cctype>
 #include <cfloat>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <stdexcept>
+#include <string>
 
 namespace {
 bool endsWithIgnoreCase(const std::string& s, const char* suffix) {
@@ -19,6 +38,122 @@ bool endsWithIgnoreCase(const std::string& s, const char* suffix) {
     }
     return true;
 }
+
+// Sanitize a string into something safe to use inside a filename.
+std::string sanitize(const std::string& in) {
+    std::string out; out.reserve(in.size());
+    for (char c : in) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-') out += c;
+        else out += '_';
+    }
+    if (out.empty()) out = "mat";
+    return out;
+}
+
+// Resolve glTF image URI / embedded buffer view -> a path RELATIVE to res/.
+// We only handle the simple URI case (most exporters do this); embedded base64
+// or buffer-view textures fall back to empty (frag shader will use 1x1).
+// Returns "" when no usable file path can be derived.
+std::string resolveGltfImageRel(const cgltf_image* img,
+                                const std::filesystem::path& gltfDir,
+                                const std::filesystem::path& resRoot)
+{
+    if (!img || !img->uri) return {};
+    const std::string uri = img->uri;
+    if (uri.rfind("data:", 0) == 0) return {}; // embedded base64, skip
+    namespace fs = std::filesystem;
+    fs::path abs = (gltfDir / uri).lexically_normal();
+    std::error_code ec;
+    fs::path rel = fs::relative(abs, resRoot, ec);
+    if (ec || rel.empty()) return {};
+    // Force forward slashes for cross-platform consistency in the .ast file.
+    std::string s = rel.generic_string();
+    return s;
+}
+
+// Write a minimal PBR .ast (JSON) file for one glTF material.
+// Returns the relative .ast path (rel to res/) on success, empty on failure.
+std::string dumpGltfMaterialAst(const cgltf_material& mat,
+                                const std::string& baseName, // e.g. "vintage_radio"
+                                int primIndex,
+                                const std::filesystem::path& gltfDir,
+                                const std::filesystem::path& resRoot)
+{
+    namespace fs = std::filesystem;
+    const std::string matName = mat.name ? sanitize(mat.name)
+                                         : ("prim" + std::to_string(primIndex));
+    const std::string fileRel = "materials/" + sanitize(baseName) + "_" + matName + ".ast";
+    const fs::path    fileAbs = resRoot / fileRel;
+
+    std::error_code ec;
+    fs::create_directories(fileAbs.parent_path(), ec);
+
+    std::string albedoRel, normalRel, mrRel, aoRel, emissiveRel;
+    glm::vec4   baseColor(1.f);
+    float       metallic  = 0.f, roughness = 1.f;
+    glm::vec4   emissive(0.f, 0.f, 0.f, 1.f);
+    float       emissiveIntensity = 0.f;
+
+    if (mat.has_pbr_metallic_roughness) {
+        const auto& m = mat.pbr_metallic_roughness;
+        baseColor = { m.base_color_factor[0], m.base_color_factor[1],
+                      m.base_color_factor[2], m.base_color_factor[3] };
+        metallic  = m.metallic_factor;
+        roughness = m.roughness_factor;
+        if (m.base_color_texture.texture && m.base_color_texture.texture->image)
+            albedoRel = resolveGltfImageRel(m.base_color_texture.texture->image, gltfDir, resRoot);
+        if (m.metallic_roughness_texture.texture && m.metallic_roughness_texture.texture->image)
+            mrRel    = resolveGltfImageRel(m.metallic_roughness_texture.texture->image, gltfDir, resRoot);
+    }
+    if (mat.normal_texture.texture && mat.normal_texture.texture->image)
+        normalRel    = resolveGltfImageRel(mat.normal_texture.texture->image, gltfDir, resRoot);
+    if (mat.occlusion_texture.texture && mat.occlusion_texture.texture->image)
+        aoRel        = resolveGltfImageRel(mat.occlusion_texture.texture->image, gltfDir, resRoot);
+    if (mat.emissive_texture.texture && mat.emissive_texture.texture->image)
+        emissiveRel  = resolveGltfImageRel(mat.emissive_texture.texture->image, gltfDir, resRoot);
+
+    emissive = { mat.emissive_factor[0], mat.emissive_factor[1], mat.emissive_factor[2], 1.f };
+    if (emissive.r + emissive.g + emissive.b > 1e-4f || !emissiveRel.empty())
+        emissiveIntensity = 1.f;
+
+    // Hand-rolled JSON writer (the engine already pulls in nlohmann/json elsewhere
+    // but we keep this dependency-free to avoid pulling its header into the .cpp).
+    auto q = [](const std::string& s) { return std::string("\"") + s + "\""; };
+    std::ofstream out(fileAbs);
+    if (!out.is_open()) {
+        std::cerr << "[glTF] cannot open .ast for write: " << fileAbs << "\n";
+        return {};
+    }
+    out << "{\n";
+    out << "  \"name\": " << q(matName) << ",\n";
+    out << "  \"type\": \"Mesh\",\n";
+    out << "  \"params\": {\n";
+    out << "    \"baseColor\": [" << baseColor.r << ", " << baseColor.g << ", "
+                                  << baseColor.b << ", " << baseColor.a << "],\n";
+    out << "    \"metallic\":  " << metallic  << ",\n";
+    out << "    \"roughness\": " << roughness << ",\n";
+    out << "    \"emissiveColor\": [" << emissive.r << ", " << emissive.g << ", "
+                                       << emissive.b << ", 1.0],\n";
+    out << "    \"emissiveIntensity\": " << emissiveIntensity << "\n";
+    out << "  },\n";
+    out << "  \"textures\": {\n";
+    bool first = true;
+    auto writeTex = [&](const char* key, const std::string& path) {
+        if (path.empty()) return;
+        if (!first) out << ",\n";
+        out << "    " << q(key) << ": " << q(path);
+        first = false;
+    };
+    writeTex("albedo",            albedoRel);
+    writeTex("normal",            normalRel);
+    writeTex("metallicRoughness", mrRel);
+    writeTex("ao",                aoRel);
+    writeTex("emissive",          emissiveRel);
+    out << "\n  }\n";
+    out << "}\n";
+    return fileRel;
+}
+
 } // namespace
 
 void SceneManager::destroyBuf(const VulkanContext& ctx, VkBuffer& buf, VkDeviceMemory& mem)
@@ -54,6 +189,9 @@ void SceneManager::loadModelFromObj(const std::string& path, const glm::vec3& po
 
     modelVertices_.clear();
     modelIndices_.clear();
+    modelSubMeshes_.clear();
+    modelSubMeshMaterials_.clear();
+    modelAutoAstPaths_.clear();
     modelLocalBoundsMin_ = glm::vec3(FLT_MAX);
     modelLocalBoundsMax_ = glm::vec3(-FLT_MAX);
 
@@ -68,6 +206,12 @@ void SceneManager::loadModelFromObj(const std::string& path, const glm::vec3& po
                 v.texCoord = { attrib.texcoords[2 * idx.texcoord_index + 0],
                                1.0f - attrib.texcoords[2 * idx.texcoord_index + 1] };
             }
+            if (idx.normal_index >= 0 && !attrib.normals.empty()) {
+                v.normal = { attrib.normals[3 * idx.normal_index + 0],
+                             attrib.normals[3 * idx.normal_index + 1],
+                             attrib.normals[3 * idx.normal_index + 2] };
+            }
+            // tangent stays at (0,0,0,0) -> frag shader will skip normal-map perturbation.
             v.color = { 1.0f, 1.0f, 1.0f };
 
             modelLocalBoundsMin_ = glm::min(modelLocalBoundsMin_, v.pos);
@@ -80,6 +224,13 @@ void SceneManager::loadModelFromObj(const std::string& path, const glm::vec3& po
             modelIndices_.push_back(unique[v]);
         }
     }
+
+    // Single sub-mesh covering everything; falls back to modelMaterialId_.
+    SubMesh sm{};
+    sm.indexOffset  = 0;
+    sm.indexCount   = static_cast<uint32_t>(modelIndices_.size());
+    sm.materialSlot = -1;
+    modelSubMeshes_.push_back(sm);
 
     bufMgr.createVertexBuffer(modelVertices_, vertexBuffer_, vertexMemory_);
     bufMgr.createIndexBuffer(modelIndices_, indexBuffer_, indexMemory_);
@@ -97,74 +248,106 @@ void SceneManager::loadModelFromGltf(const std::string& path, const glm::vec3& p
     if (r != cgltf_result_success || !data) {
         throw std::runtime_error("Failed to parse glTF: " + path);
     }
-    // Pulls in external .bin / embedded base64 / .glb chunks.
     if (cgltf_load_buffers(&opts, data, path.c_str()) != cgltf_result_success) {
         cgltf_free(data);
         throw std::runtime_error("Failed to load glTF buffers: " + path);
     }
 
+    namespace fs = std::filesystem;
+    const fs::path gltfPath = fs::path(path);
+    const fs::path gltfDir  = gltfPath.parent_path();
+    const fs::path resRoot  = fs::absolute(fs::path("res"));
+    const std::string baseName = gltfPath.stem().string();
+
     modelVertices_.clear();
     modelIndices_.clear();
+    modelSubMeshes_.clear();
+    modelSubMeshMaterials_.clear();
+    modelAutoAstPaths_.clear();
     modelLocalBoundsMin_ = glm::vec3(FLT_MAX);
     modelLocalBoundsMax_ = glm::vec3(-FLT_MAX);
 
-    std::unordered_map<Vertex, uint32_t, VertexHash> unique;
-
-    // Walk every primitive of every mesh and append into one vertex/index pool.
-    // Multi-material primitives are merged (current engine has one descriptor set
-    // per main model); follow-up work could split per-primitive.
+    int globalPrimIndex = 0;
+    // Walk every primitive of every mesh. Each primitive becomes one SubMesh
+    // with its own contiguous range in the shared index buffer. Vertices are
+    // appended without dedup across primitives (cheap, simpler) but the
+    // primitive's own index buffer is preserved.
     for (cgltf_size mi = 0; mi < data->meshes_count; ++mi) {
         const cgltf_mesh& mesh = data->meshes[mi];
-        for (cgltf_size pi = 0; pi < mesh.primitives_count; ++pi) {
+        for (cgltf_size pi = 0; pi < mesh.primitives_count; ++pi, ++globalPrimIndex) {
             const cgltf_primitive& prim = mesh.primitives[pi];
             if (prim.type != cgltf_primitive_type_triangles || !prim.indices) continue;
 
             const cgltf_accessor* posAcc = nullptr;
             const cgltf_accessor* uvAcc  = nullptr;
+            const cgltf_accessor* nrmAcc = nullptr;
+            const cgltf_accessor* tanAcc = nullptr;
             for (cgltf_size a = 0; a < prim.attributes_count; ++a) {
                 const cgltf_attribute& at = prim.attributes[a];
-                if (at.type == cgltf_attribute_type_position)  posAcc = at.data;
-                else if (at.type == cgltf_attribute_type_texcoord && !uvAcc) uvAcc = at.data;
+                if      (at.type == cgltf_attribute_type_position && !posAcc) posAcc = at.data;
+                else if (at.type == cgltf_attribute_type_texcoord && !uvAcc)  uvAcc  = at.data;
+                else if (at.type == cgltf_attribute_type_normal   && !nrmAcc) nrmAcc = at.data;
+                else if (at.type == cgltf_attribute_type_tangent  && !tanAcc) tanAcc = at.data;
             }
             if (!posAcc) continue;
 
+            const uint32_t baseVertex = static_cast<uint32_t>(modelVertices_.size());
             const cgltf_size vcount = posAcc->count;
-            std::vector<Vertex> primVerts(vcount);
+            modelVertices_.reserve(modelVertices_.size() + vcount);
             for (cgltf_size i = 0; i < vcount; ++i) {
+                Vertex v{};
                 float p[3]{};
                 cgltf_accessor_read_float(posAcc, i, p, 3);
-                Vertex v{};
                 v.pos      = { p[0], p[1], p[2] };
                 v.color    = { 1.f, 1.f, 1.f };
                 v.texCoord = { 0.f, 0.f };
                 if (uvAcc) {
                     float uv[2]{};
                     cgltf_accessor_read_float(uvAcc, i, uv, 2);
-                    // glTF already uses top-left UV origin (Vulkan-compatible),
-                    // no V-flip needed unlike the .obj path.
                     v.texCoord = { uv[0], uv[1] };
                 }
-                primVerts[i] = v;
+                if (nrmAcc) {
+                    float n[3]{};
+                    cgltf_accessor_read_float(nrmAcc, i, n, 3);
+                    v.normal = { n[0], n[1], n[2] };
+                }
+                if (tanAcc) {
+                    float t[4]{};
+                    cgltf_accessor_read_float(tanAcc, i, t, 4);
+                    v.tangent = { t[0], t[1], t[2], t[3] };
+                }
+                modelVertices_.push_back(v);
                 modelLocalBoundsMin_ = glm::min(modelLocalBoundsMin_, v.pos);
                 modelLocalBoundsMax_ = glm::max(modelLocalBoundsMax_, v.pos);
             }
 
+            const uint32_t indexOffset = static_cast<uint32_t>(modelIndices_.size());
             const cgltf_accessor* idxAcc = prim.indices;
+            modelIndices_.reserve(modelIndices_.size() + idxAcc->count);
             for (cgltf_size i = 0; i < idxAcc->count; ++i) {
                 const cgltf_size srcIdx = cgltf_accessor_read_index(idxAcc, i);
-                if (srcIdx >= primVerts.size()) continue;
-                const Vertex& v = primVerts[srcIdx];
-                auto it = unique.find(v);
-                uint32_t dst;
-                if (it == unique.end()) {
-                    dst = static_cast<uint32_t>(modelVertices_.size());
-                    unique.emplace(v, dst);
-                    modelVertices_.push_back(v);
-                } else {
-                    dst = it->second;
-                }
-                modelIndices_.push_back(dst);
+                modelIndices_.push_back(baseVertex + static_cast<uint32_t>(srcIdx));
             }
+            const uint32_t indexCount = static_cast<uint32_t>(modelIndices_.size()) - indexOffset;
+
+            // Per-primitive material -> emit a .ast and remember its slot.
+            int slot = -1;
+            std::string astRel;
+            if (prim.material) {
+                astRel = dumpGltfMaterialAst(*prim.material, baseName, globalPrimIndex,
+                                             gltfDir, resRoot);
+                if (!astRel.empty()) {
+                    slot = static_cast<int>(modelAutoAstPaths_.size());
+                    modelAutoAstPaths_.push_back(astRel);
+                    modelSubMeshMaterials_.push_back(0u); // unbound until Application loads it
+                }
+            }
+
+            SubMesh sm{};
+            sm.indexOffset  = indexOffset;
+            sm.indexCount   = indexCount;
+            sm.materialSlot = slot;
+            modelSubMeshes_.push_back(sm);
         }
     }
 
@@ -177,6 +360,11 @@ void SceneManager::loadModelFromGltf(const std::string& path, const glm::vec3& p
     bufMgr.createVertexBuffer(modelVertices_, vertexBuffer_, vertexMemory_);
     bufMgr.createIndexBuffer(modelIndices_, indexBuffer_, indexMemory_);
     modelIndexCount_ = static_cast<uint32_t>(modelIndices_.size());
+
+    if (!modelAutoAstPaths_.empty()) {
+        std::cout << "[glTF] dumped " << modelAutoAstPaths_.size()
+                  << " .ast file(s) under res/materials/ for " << baseName << "\n";
+    }
 }
 
 void SceneManager::createCubeTemplate(const BufferManager& bufMgr)

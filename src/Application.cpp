@@ -116,6 +116,18 @@ void Application::initVulkan()
         if (mid != kInvalidMaterialId) sceneMgr_.setModelMaterialId(mid);
     }
 
+    // Auto-load any .ast files dumped by the glTF loader, one per SubMesh slot.
+    {
+        const auto& autoPaths = sceneMgr_.getModelAutoAstPaths();
+        for (int slot = 0; slot < (int)autoPaths.size(); ++slot) {
+            if (autoPaths[slot].empty()) continue;
+            const MaterialId mid = matMgr_.loadMaterialFromAsset(
+                autoPaths[slot], ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+            if (mid != kInvalidMaterialId)
+                sceneMgr_.setModelSubMeshMaterialId(slot, mid);
+        }
+    }
+
     descMgr_.create(ctx_, swapChain_, pipeMgr_, bufMgr_);
 
     ui_->setVulkanInstance(ctx_.getInstance(), nullptr);
@@ -269,25 +281,53 @@ void Application::recordCommandBuffer(VkCommandBuffer cb, uint32_t imageIndex)
     TINYENGINE(cb, "Main Render Pass");
     vkCmdBeginRenderPass(cb, &rpi, VK_SUBPASS_CONTENTS_INLINE);
 
-    // Main model — use its assigned material descriptor set
+    // Main model — iterate SubMeshes and switch material/descriptor set per entry.
     if (sceneMgr_.getModelIndexCount() > 0) {
         TINYENGINE(cb, "Scene Geometry");
-        const MaterialId meshMat = matMgr_.isValid(sceneMgr_.getModelMaterialId())
+        const MaterialId fallbackMat = matMgr_.isValid(sceneMgr_.getModelMaterialId())
             ? sceneMgr_.getModelMaterialId()
             : matMgr_.getDefaultMeshMaterialId();
 
-        VkPipeline meshPipe = matMgr_.getPipeline(meshMat, ctx_, pipeMgr_);
-        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipe);
+        // Bind shared vertex/index buffer once; SubMeshes only differ in offset/count.
         VkBuffer vb = sceneMgr_.getVertexBuffer(); VkDeviceSize off = 0;
         vkCmdBindVertexBuffers(cb, 0, 1, &vb, &off);
         vkCmdBindIndexBuffer(cb, sceneMgr_.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
-        VkDescriptorSet ds = matMgr_.getDescriptorSet(meshMat, imageIndex);
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                                pipeMgr_.getMainPipelineLayout(), 0, 1, &ds, 0, nullptr);
+
         glm::mat4 model = glm::translate(glm::mat4(1.f), mainModelPosition);
         vkCmdPushConstants(cb, pipeMgr_.getMainPipelineLayout(),
                            VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &model);
-        vkCmdDrawIndexed(cb, sceneMgr_.getModelIndexCount(), 1, 0, 0, 0);
+
+        const auto& subs = sceneMgr_.getModelSubMeshes();
+        // Track last-bound pipeline/desc set to skip redundant binds.
+        VkPipeline lastPipe = VK_NULL_HANDLE;
+        VkDescriptorSet lastDs = VK_NULL_HANDLE;
+
+        auto drawSpan = [&](uint32_t indexOffset, uint32_t indexCount, MaterialId mat) {
+            if (indexCount == 0) return;
+            const MaterialId useMat = matMgr_.isValid(mat) ? mat : fallbackMat;
+            VkPipeline pipe = matMgr_.getPipeline(useMat, ctx_, pipeMgr_);
+            if (pipe != lastPipe) {
+                vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe);
+                lastPipe = pipe;
+            }
+            VkDescriptorSet ds = matMgr_.getDescriptorSet(useMat, imageIndex);
+            if (ds != lastDs) {
+                vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        pipeMgr_.getMainPipelineLayout(), 0, 1, &ds, 0, nullptr);
+                lastDs = ds;
+            }
+            vkCmdDrawIndexed(cb, indexCount, 1, indexOffset, 0, 0);
+        };
+
+        if (subs.empty()) {
+            // Backwards-compat path: no SubMesh table -> single draw.
+            drawSpan(0, sceneMgr_.getModelIndexCount(), fallbackMat);
+        } else {
+            for (const auto& sm : subs) {
+                const MaterialId mat = sceneMgr_.getModelSubMeshMaterialId(sm.materialSlot);
+                drawSpan(sm.indexOffset, sm.indexCount, mat);
+            }
+        }
     }
 
     // GPU-instanced boxes — all share the default box material (preserves instancing)
@@ -368,6 +408,18 @@ void Application::recreateSwapChain()
         const MaterialId mid = matMgr_.loadMaterialFromAsset(
             "materials/mainmodel.ast", ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
         if (mid != kInvalidMaterialId) sceneMgr_.setModelMaterialId(mid);
+    }
+
+    // Re-apply auto-dumped glTF .ast files per SubMesh slot.
+    {
+        const auto& autoPaths = sceneMgr_.getModelAutoAstPaths();
+        for (int slot = 0; slot < (int)autoPaths.size(); ++slot) {
+            if (autoPaths[slot].empty()) continue;
+            const MaterialId mid = matMgr_.loadMaterialFromAsset(
+                autoPaths[slot], ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+            if (mid != kInvalidMaterialId)
+                sceneMgr_.setModelSubMeshMaterialId(slot, mid);
+        }
     }
 
     descMgr_.create(ctx_, swapChain_, pipeMgr_, bufMgr_);

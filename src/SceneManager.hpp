@@ -14,6 +14,17 @@ public:
     static constexpr uint32_t kPickIdMainModel = 1;
     static constexpr uint32_t kPickIdBoxBase   = 2;
 
+    // Sub-range of the main model index buffer corresponding to one glTF
+    // primitive (or, for .obj loads, the whole mesh). Multiple SubMeshes
+    // share the same vertex/index buffer; rendering iterates this list and
+    // switches descriptor set per entry.
+    struct SubMesh {
+        uint32_t indexOffset = 0;
+        uint32_t indexCount  = 0;
+        // Index into modelSubMeshMaterials_; -1 means "use modelMaterialId_".
+        int      materialSlot = -1;
+    };
+
     void loadModel(const std::string& path, const glm::vec3& position, const BufferManager& bufMgr);
     void createCubeTemplate(const BufferManager& bufMgr);
     void destroyModelBuffers(const VulkanContext& ctx);
@@ -49,6 +60,25 @@ public:
     uint32_t getBoxMaterialId(RenderEntityId eid)              const;
     bool     hasBoxMaterialId(RenderEntityId eid)              const   { return boxMaterialIds_.count(eid) > 0; }
 
+    // ── Sub-mesh API ─────────────────────────────────────────────────
+    const std::vector<SubMesh>& getModelSubMeshes() const { return modelSubMeshes_; }
+    // Per-slot material override; falls back to modelMaterialId_ when the
+    // submesh has no slot or the slot is unbound.
+    uint32_t getModelSubMeshMaterialId(int slot) const {
+        if (slot < 0 || slot >= (int)modelSubMeshMaterials_.size()) return modelMaterialId_;
+        const uint32_t m = modelSubMeshMaterials_[slot];
+        return (m != 0u) ? m : modelMaterialId_;
+    }
+    void setModelSubMeshMaterialId(int slot, uint32_t id) {
+        if (slot < 0) return;
+        if ((int)modelSubMeshMaterials_.size() <= slot)
+            modelSubMeshMaterials_.resize(slot + 1, 0u);
+        modelSubMeshMaterials_[slot] = id;
+    }
+    // Auto-generated .ast paths from the last glTF load (relative to res/),
+    // one per SubMesh slot. Empty entries -> the primitive had no material.
+    const std::vector<std::string>& getModelAutoAstPaths() const { return modelAutoAstPaths_; }
+
 private:
     std::vector<Vertex>    modelVertices_;
     std::vector<uint32_t>  modelIndices_;
@@ -65,6 +95,13 @@ private:
 
     uint32_t                                      modelMaterialId_ = 0;
     std::unordered_map<RenderEntityId, uint32_t>  boxMaterialIds_;
+
+    // SubMesh ranges populated by loadModelFrom*; always non-empty after a
+    // successful load (the .obj path emits exactly one entry covering the
+    // entire mesh, the glTF path emits one per primitive).
+    std::vector<SubMesh>     modelSubMeshes_;
+    std::vector<uint32_t>    modelSubMeshMaterials_; // size = number of slots, 0 = unbound
+    std::vector<std::string> modelAutoAstPaths_;     // "materials/<base>_<idx>.ast" (or empty)
 
     VkBuffer       vertexBuffer_{};     VkDeviceMemory vertexMemory_{};
     VkBuffer       indexBuffer_{};      VkDeviceMemory indexMemory_{};

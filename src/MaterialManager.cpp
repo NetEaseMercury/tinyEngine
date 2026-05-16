@@ -5,6 +5,7 @@
 // duplicate symbol errors with TextureManager.obj.
 #undef STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <iostream>
 #include <stdexcept>
 #include <cstring>
@@ -188,14 +189,21 @@ void MaterialManager::uploadTexture1x1(TextureGPU& tex,
 void MaterialManager::createDefaultTextures(const VulkanContext& ctx, const CommandManager& cmdMgr,
                                             const FramebufferManager& fbMgr)
 {
-    uploadTexture1x1(defaultAlbedo_, 255, 255, 255, 255, ctx, cmdMgr, fbMgr);
-    uploadTexture1x1(defaultNormal_, 128, 128, 255, 255, ctx, cmdMgr, fbMgr);
+    uploadTexture1x1(defaultAlbedo_,   255, 255, 255, 255, ctx, cmdMgr, fbMgr);
+    uploadTexture1x1(defaultNormal_,   128, 128, 255, 255, ctx, cmdMgr, fbMgr);
+    // glTF metallicRoughness: r unused, g=roughness=1 (fully rough), b=metallic=0
+    uploadTexture1x1(defaultMR_,         0, 255,   0, 255, ctx, cmdMgr, fbMgr);
+    uploadTexture1x1(defaultAO_,       255, 255, 255, 255, ctx, cmdMgr, fbMgr);
+    uploadTexture1x1(defaultEmissive_,   0,   0,   0,   0, ctx, cmdMgr, fbMgr);
 }
 
 void MaterialManager::destroyDefaultTextures(const VulkanContext& ctx)
 {
-    destroyTexture(defaultAlbedo_, ctx);
-    destroyTexture(defaultNormal_, ctx);
+    destroyTexture(defaultAlbedo_,   ctx);
+    destroyTexture(defaultNormal_,   ctx);
+    destroyTexture(defaultMR_,       ctx);
+    destroyTexture(defaultAO_,       ctx);
+    destroyTexture(defaultEmissive_, ctx);
 }
 
 // ── Descriptor pool ────────────────────────────────────────────────────────────
@@ -347,22 +355,23 @@ void MaterialManager::writeDescSets(MaterialEntry& e, const VulkanContext& ctx,
         bi.buffer = e.ubos[i]; bi.offset = 0; bi.range = sizeof(UniformBufferObject);
 
         if (e.type == MaterialType::Mesh) {
-            VkImageView albedoView = e.albedo.view    != VK_NULL_HANDLE ? e.albedo.view    : defaultAlbedo_.view;
-            VkSampler   albedoSamp = e.albedo.sampler != VK_NULL_HANDLE ? e.albedo.sampler : defaultAlbedo_.sampler;
-            VkImageView normalView = e.normal.view    != VK_NULL_HANDLE ? e.normal.view    : defaultNormal_.view;
-            VkSampler   normalSamp = e.normal.sampler != VK_NULL_HANDLE ? e.normal.sampler : defaultNormal_.sampler;
+            // Resolve every sampler binding to either the user-supplied texture
+            // or the corresponding 1x1 default. The frag shader expects all 5
+            // samplers to be bound regardless of which the asset actually uses.
+            auto pick = [](const TextureGPU& t, const TextureGPU& fb) -> VkDescriptorImageInfo {
+                VkDescriptorImageInfo di{};
+                di.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                di.imageView   = (t.view    != VK_NULL_HANDLE) ? t.view    : fb.view;
+                di.sampler     = (t.sampler != VK_NULL_HANDLE) ? t.sampler : fb.sampler;
+                return di;
+            };
+            const VkDescriptorImageInfo albedoI = pick(e.albedo,            defaultAlbedo_);
+            const VkDescriptorImageInfo normalI = pick(e.normal,            defaultNormal_);
+            const VkDescriptorImageInfo mrI     = pick(e.metallicRoughness, defaultMR_);
+            const VkDescriptorImageInfo aoI     = pick(e.ao,                defaultAO_);
+            const VkDescriptorImageInfo emI     = pick(e.emissive,          defaultEmissive_);
 
-            VkDescriptorImageInfo texInfo{};
-            texInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            texInfo.imageView   = albedoView;
-            texInfo.sampler     = albedoSamp;
-
-            VkDescriptorImageInfo nrmInfo{};
-            nrmInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            nrmInfo.imageView   = normalView;
-            nrmInfo.sampler     = normalSamp;
-
-            std::array<VkWriteDescriptorSet, 3> writes{};
+            std::array<VkWriteDescriptorSet, 6> writes{};
             writes[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             writes[0].dstSet          = e.descSets[i];
             writes[0].dstBinding      = 0;
@@ -370,21 +379,21 @@ void MaterialManager::writeDescSets(MaterialEntry& e, const VulkanContext& ctx,
             writes[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[0].pBufferInfo     = &bi;
 
-            writes[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writes[1].dstSet          = e.descSets[i];
-            writes[1].dstBinding      = 1;
-            writes[1].descriptorCount = 1;
-            writes[1].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writes[1].pImageInfo      = &texInfo;
+            auto fillTex = [&](size_t idx, uint32_t binding, const VkDescriptorImageInfo* info) {
+                writes[idx].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                writes[idx].dstSet          = e.descSets[i];
+                writes[idx].dstBinding      = binding;
+                writes[idx].descriptorCount = 1;
+                writes[idx].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                writes[idx].pImageInfo      = info;
+            };
+            fillTex(1, 1, &albedoI);
+            fillTex(2, 2, &normalI);
+            fillTex(3, 3, &mrI);
+            fillTex(4, 4, &aoI);
+            fillTex(5, 5, &emI);
 
-            writes[2].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writes[2].dstSet          = e.descSets[i];
-            writes[2].dstBinding      = 2;
-            writes[2].descriptorCount = 1;
-            writes[2].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            writes[2].pImageInfo      = &nrmInfo;
-
-            vkUpdateDescriptorSets(ctx.getDevice(), 3, writes.data(), 0, nullptr);
+            vkUpdateDescriptorSets(ctx.getDevice(), 6, writes.data(), 0, nullptr);
         } else {
             VkWriteDescriptorSet w{};
             w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -402,8 +411,11 @@ void MaterialManager::destroyEntry(MaterialEntry& e, const VulkanContext& ctx)
 {
     destroyUBOs(e, ctx);
     e.descSets.clear();
-    if (!e.albedo.isDefault) destroyTexture(e.albedo, ctx);
-    if (!e.normal.isDefault) destroyTexture(e.normal, ctx);
+    if (!e.albedo.isDefault)            destroyTexture(e.albedo,            ctx);
+    if (!e.normal.isDefault)            destroyTexture(e.normal,            ctx);
+    if (!e.metallicRoughness.isDefault) destroyTexture(e.metallicRoughness, ctx);
+    if (!e.ao.isDefault)                destroyTexture(e.ao,                ctx);
+    if (!e.emissive.isDefault)          destroyTexture(e.emissive,          ctx);
 }
 
 // ── Material creation ──────────────────────────────────────────────────────────
@@ -411,6 +423,9 @@ void MaterialManager::destroyEntry(MaterialEntry& e, const VulkanContext& ctx)
 MaterialId MaterialManager::createMeshMaterial(const std::string& name,
                                                const std::string& albedoPath,
                                                const std::string& normalPath,
+                                               const std::string& metallicRoughnessPath,
+                                               const std::string& aoPath,
+                                               const std::string& emissivePath,
                                                const MaterialParams& params,
                                                const VulkanContext& ctx,
                                                const CommandManager& cmdMgr,
@@ -425,21 +440,26 @@ MaterialId MaterialManager::createMeshMaterial(const std::string& name,
     e.params           = params;
     e.deletable        = true;
 
-    if (!albedoPath.empty()) {
-        loadTexture(e.albedo, albedoPath, ctx, cmdMgr, bufMgr, fbMgr);
-    } else {
-        e.albedo.view    = defaultAlbedo_.view;
-        e.albedo.sampler = defaultAlbedo_.sampler;
-        e.albedo.isDefault = true;
-    }
-
-    if (!normalPath.empty()) {
-        loadTexture(e.normal, normalPath, ctx, cmdMgr, bufMgr, fbMgr);
-    } else {
-        e.normal.view    = defaultNormal_.view;
-        e.normal.sampler = defaultNormal_.sampler;
-        e.normal.isDefault = true;
-    }
+    auto bind = [&](TextureGPU& slot, const std::string& path, const TextureGPU& fallback) {
+        if (!path.empty()) {
+            try {
+                loadTexture(slot, path, ctx, cmdMgr, bufMgr, fbMgr);
+                return;
+            } catch (const std::exception& ex) {
+                std::cerr << "[MaterialManager] texture load failed (" << path
+                          << "): " << ex.what() << " — falling back to default\n";
+            }
+        }
+        slot.view      = fallback.view;
+        slot.sampler   = fallback.sampler;
+        slot.isDefault = true;
+        slot.path.clear();
+    };
+    bind(e.albedo,            albedoPath,            defaultAlbedo_);
+    bind(e.normal,            normalPath,            defaultNormal_);
+    bind(e.metallicRoughness, metallicRoughnessPath, defaultMR_);
+    bind(e.ao,                aoPath,                defaultAO_);
+    bind(e.emissive,          emissivePath,          defaultEmissive_);
 
     createUBOs(e, ctx, bufMgr);
     allocateDescSets(e, ctx, pipeMgr);
@@ -478,7 +498,9 @@ MaterialId MaterialManager::cloneMaterial(MaterialId src,
 
     const MaterialEntry& s = materials_.at(src);
     if (s.type == MaterialType::Mesh)
-        return createMeshMaterial(s.name + " (copy)", s.albedo.path, s.normal.path,
+        return createMeshMaterial(s.name + " (copy)",
+                                  s.albedo.path,            s.normal.path,
+                                  s.metallicRoughness.path, s.ao.path, s.emissive.path,
                                   s.params, ctx, cmdMgr, bufMgr, fbMgr, pipeMgr);
     else
         return createBoxMaterial(s.name + " (copy)", s.params, ctx, bufMgr, pipeMgr);
@@ -559,6 +581,16 @@ void MaterialManager::setNormalPath(MaterialId id, const std::string& path,
 void MaterialManager::updateAllUBOs(uint32_t imageIndex,
                                     const glm::mat4& view, const glm::mat4& proj)
 {
+    // Derive camera world position from the inverse view matrix so callers
+    // don't have to thread cameraPos through every layer.
+    const glm::mat4 invView = glm::inverse(view);
+    const glm::vec3 camPos  = glm::vec3(invView[3]);
+
+    // Hard-coded directional sun for now; later this becomes a Scene/Light API.
+    const glm::vec3 sunDir   = glm::normalize(glm::vec3(0.4f, 0.8f, 0.5f));
+    const glm::vec3 sunColor = glm::vec3(3.0f, 2.95f, 2.85f); // mild warm white
+    const float     ambient  = 0.18f;
+
     for (auto& [id, e] : materials_) {
         UniformBufferObject ubo{};
         ubo.view            = view;
@@ -567,6 +599,10 @@ void MaterialManager::updateAllUBOs(uint32_t imageIndex,
         ubo.boxMaterialTint = e.params.baseColor;
         ubo.emissive        = glm::vec4(glm::vec3(e.params.emissiveColor) * e.params.emissiveIntensity,
                                         e.params.emissiveIntensity);
+        ubo.cameraPos       = glm::vec4(camPos, 1.0f);
+        ubo.lightDir        = glm::vec4(sunDir, 0.0f);
+        ubo.lightColor      = glm::vec4(sunColor, ambient);
+        ubo.pbrFactors      = glm::vec4(e.params.metallic, e.params.roughness, 1.0f, 1.0f);
         memcpy(e.uboMapped[imageIndex], &ubo, sizeof(ubo));
     }
 }
@@ -649,7 +685,9 @@ MaterialId MaterialManager::loadMaterialFromAsset(const std::string& astRelPath,
     try {
         if (desc.type == MaterialType::Mesh) {
             id = createMeshMaterial(desc.name.empty() ? std::string("AssetMaterial") : desc.name,
-                                    desc.albedoPath, desc.normalPath, desc.params,
+                                    desc.albedoPath, desc.normalPath,
+                                    desc.metallicRoughnessPath, desc.aoPath, desc.emissivePath,
+                                    desc.params,
                                     ctx, cmdMgr, bufMgr, fbMgr, pipeMgr);
         } else {
             id = createBoxMaterial(desc.name.empty() ? std::string("AssetMaterial") : desc.name,

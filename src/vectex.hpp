@@ -12,6 +12,8 @@ struct Vertex {
     glm::vec3 pos;
     glm::vec3 color;
     glm::vec2 texCoord;
+    glm::vec3 normal{0.f, 0.f, 0.f};   // location=4 (location=3 reserved for InstanceData)
+    glm::vec4 tangent{0.f, 0.f, 0.f, 0.f}; // xyz=tangent, w=bitangent sign; (0,0,0,0) means "absent"
 
     ~Vertex() = default;
 
@@ -24,8 +26,11 @@ struct Vertex {
         return bindingDescription;
     }
 
-    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions() {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+    // Note: location=3 is intentionally skipped; it belongs to per-instance data
+    // used by the box pipeline. The mesh pipeline simply doesn't bind binding=1
+    // and the unused location=3 input is harmless.
+    static std::array<VkVertexInputAttributeDescription, 5> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 5> attributeDescriptions{};
 
         attributeDescriptions[0].binding = 0;
         attributeDescriptions[0].location = 0;
@@ -42,11 +47,22 @@ struct Vertex {
         attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
         attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
 
+        attributeDescriptions[3].binding = 0;
+        attributeDescriptions[3].location = 4;
+        attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[3].offset = offsetof(Vertex, normal);
+
+        attributeDescriptions[4].binding = 0;
+        attributeDescriptions[4].location = 5;
+        attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+        attributeDescriptions[4].offset = offsetof(Vertex, tangent);
+
         return attributeDescriptions;
     }
 
     bool operator==(const Vertex& other) const {
-        return pos == other.pos && color == other.color && texCoord == other.texCoord;
+        return pos == other.pos && color == other.color && texCoord == other.texCoord
+            && normal == other.normal && tangent == other.tangent;
     }
 };
 
@@ -55,7 +71,8 @@ struct VertexHash {
         auto hash1 = std::hash<glm::vec3>()(vertex.pos);
         auto hash2 = std::hash<glm::vec2>()(vertex.texCoord);
         auto hash3 = std::hash<glm::vec3>()(vertex.color);
-        return hash1 ^ (hash2 << 1) ^ (hash3 << 2);
+        auto hash4 = std::hash<glm::vec3>()(vertex.normal);
+        return hash1 ^ (hash2 << 1) ^ (hash3 << 2) ^ (hash4 << 3);
     }
 };
 

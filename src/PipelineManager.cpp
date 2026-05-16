@@ -88,24 +88,30 @@ void PipelineManager::destroyPipelines(const VulkanContext& ctx)
 
 void PipelineManager::createDescriptorSetLayouts(const VulkanContext& ctx)
 {
-    // Main: UBO + albedo sampler + normal sampler
+    // Main: UBO (b=0) + albedo (b=1) + normal (b=2)
+    //     + metallicRoughness (b=3) + ao (b=4) + emissive (b=5)
     {
         VkDescriptorSetLayoutBinding ubo{};
         ubo.binding         = 0; ubo.descriptorCount = 1;
         ubo.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         ubo.stageFlags      = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        VkDescriptorSetLayoutBinding tex{};
-        tex.binding         = 1; tex.descriptorCount = 1;
-        tex.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        tex.stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+        auto makeSampler = [](uint32_t b) {
+            VkDescriptorSetLayoutBinding s{};
+            s.binding         = b; s.descriptorCount = 1;
+            s.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            s.stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
+            return s;
+        };
 
-        VkDescriptorSetLayoutBinding nrm{};
-        nrm.binding         = 2; nrm.descriptorCount = 1;
-        nrm.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        nrm.stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-        std::array<VkDescriptorSetLayoutBinding, 3> bindings{ ubo, tex, nrm };
+        std::array<VkDescriptorSetLayoutBinding, 6> bindings{
+            ubo,
+            makeSampler(1), // albedo
+            makeSampler(2), // normal
+            makeSampler(3), // metallicRoughness (g=roughness, b=metallic)
+            makeSampler(4), // ao
+            makeSampler(5), // emissive
+        };
         VkDescriptorSetLayoutCreateInfo li{};
         li.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
         li.bindingCount = static_cast<uint32_t>(bindings.size());
