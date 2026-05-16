@@ -429,6 +429,20 @@ void Application::recreateSwapChain()
 
 // ─── Picking ──────────────────────────────────────────────────────────────────
 
+MaterialId Application::firstRenderedModelMaterialId() const
+{
+    // Walk submeshes in order; return the first material ID that is actually
+    // bound and valid. For .obj (single submesh, slot -1) or unbound gltf
+    // slots, fall back to modelMaterialId_.
+    const auto& subs = sceneMgr_.getModelSubMeshes();
+    for (const auto& sm : subs) {
+        if (sm.materialSlot < 0) continue;
+        const MaterialId id = sceneMgr_.getModelSubMeshMaterialId(sm.materialSlot);
+        if (matMgr_.isValid(id)) return id;
+    }
+    return sceneMgr_.getModelMaterialId();
+}
+
 void Application::tryPickMainModel(float cx, float cy)
 {
     mainModelSelected = false;
@@ -468,7 +482,7 @@ void Application::tryPickMainModel(float cx, float cy)
     if (id == SceneManager::kPickIdNone) return;
     if (id == SceneManager::kPickIdMainModel) {
         mainModelSelected  = true;
-        selectedMaterialId = sceneMgr_.getModelMaterialId();
+        selectedMaterialId = firstRenderedModelMaterialId();
         return;
     }
     if (id >= SceneManager::kPickIdBoxBase) {
@@ -562,7 +576,7 @@ bool Application::loadAndApplyMaterialAsset(const std::string& astRelPath)
         }
     }
 
-    if (mainModelSelected) selectedMaterialId = mid;
+    if (mainModelSelected) selectedMaterialId = firstRenderedModelMaterialId();
     return true;
 }
 

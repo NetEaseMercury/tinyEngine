@@ -102,6 +102,11 @@ private:
     void tryBeginCameraFocusOnPick();
     void cleanUp();
 
+    // Returns the first material ID that is actually rendered on the main model.
+    // For glTF models with per-submesh materials, this is slot 0's material;
+    // for single-material (.obj) models it is modelMaterialId_.
+    MaterialId firstRenderedModelMaterialId() const;
+
     static void framebufferResizeCallback(GLFWwindow* w, int, int);
     static void mouseButtonCallback(GLFWwindow* w, int button, int action, int mods);
     static void mouseCallback(GLFWwindow* w, double xpos, double ypos);
