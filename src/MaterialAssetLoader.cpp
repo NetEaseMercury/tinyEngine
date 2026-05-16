@@ -72,6 +72,17 @@ bool MaterialAssetLoader::load(const std::string& astRelPath,
         desc.normalPath = resolveRel(t.value("normal", std::string{}));
     }
 
+    // Optional: model field. Either a plain string "models/xxx.obj"
+    // or { "path": "models/xxx.obj" } for forward compatibility.
+    if (j.contains("model")) {
+        const auto& m = j["model"];
+        if (m.is_string()) {
+            desc.modelPath = resolveRel(m.get<std::string>());
+        } else if (m.is_object()) {
+            desc.modelPath = resolveRel(m.value("path", std::string{}));
+        }
+    }
+
     out = std::move(desc);
     return true;
 }

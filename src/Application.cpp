@@ -1,4 +1,5 @@
 #include "Application.hpp"
+#include "MaterialAssetLoader.hpp"
 #include "TinyEngineDebug.hpp"
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
@@ -467,9 +468,30 @@ void Application::setBoxMaterial(RenderEntityId eid, MaterialId id)
 
 bool Application::loadAndApplyMaterialAsset(const std::string& astRelPath)
 {
+    // Peek the asset first so we can do an optional mesh swap together with
+    // the material change. MaterialAssetLoader::load only touches the JSON file
+    // so the second internal load inside MaterialManager is cheap.
+    MaterialAssetDesc peeked;
+    const bool peekOk = MaterialAssetLoader::load(astRelPath, peeked, nullptr);
+
     const MaterialId mid = matMgr_.loadMaterialFromAsset(
         astRelPath, ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
     if (mid == kInvalidMaterialId) return false;
+
+    // Optional mesh swap: .ast may carry a "model" field. Wait the GPU idle
+    // before destroying the old vertex/index buffers since the in-flight
+    // command buffers may still reference them.
+    if (peekOk && !peeked.modelPath.empty()) {
+        vkDeviceWaitIdle(ctx_.getDevice());
+        sceneMgr_.destroyModelBuffers(ctx_);
+        try {
+            sceneMgr_.loadModel(peeked.modelPath, mainModelPosition, bufMgr_);
+        } catch (const std::exception& ex) {
+            std::cerr << "[MaterialAsset] model swap failed (" << peeked.modelPath
+                      << "): " << ex.what() << "\n";
+        }
+    }
+
     sceneMgr_.setModelMaterialId(mid);
     if (mainModelSelected) selectedMaterialId = mid;
     return true;

@@ -15,5 +15,6 @@
   "textures": {
     "albedo": "textures/texture.jpg",
     "normal": ""
-  }
+  },
+  "model": "models/viking_room.obj"
 }

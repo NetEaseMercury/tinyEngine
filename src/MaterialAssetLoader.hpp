@@ -14,6 +14,7 @@ struct MaterialAssetDesc {
     MaterialParams params;
     std::string    albedoPath;  // resolved path, may be empty -> use 1x1 fallback
     std::string    normalPath;  // resolved path, may be empty
+    std::string    modelPath;   // resolved path to .obj, may be empty -> keep current mesh
 };
 
 class MaterialAssetLoader {

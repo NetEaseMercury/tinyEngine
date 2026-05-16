@@ -15,5 +15,6 @@
   "textures": {
     "albedo": "textures/fantasy_game_inn.png",
     "normal": ""
-  }
+  },
+  "model": "models/fantasy_game_inn.obj"
 }
