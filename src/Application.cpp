@@ -533,11 +533,13 @@ bool Application::loadAndApplyMaterialAsset(const std::string& astRelPath)
     // Optional mesh swap: .ast may carry a "model" field. Wait the GPU idle
     // before destroying the old vertex/index buffers since the in-flight
     // command buffers may still reference them.
+    bool modelSwapped = false;
     if (peekOk && !peeked.modelPath.empty()) {
         vkDeviceWaitIdle(ctx_.getDevice());
         sceneMgr_.destroyModelBuffers(ctx_);
         try {
             sceneMgr_.loadModel(peeked.modelPath, mainModelPosition, bufMgr_);
+            modelSwapped = true;
         } catch (const std::exception& ex) {
             std::cerr << "[MaterialAsset] model swap failed (" << peeked.modelPath
                       << "): " << ex.what() << "\n";
@@ -545,6 +547,21 @@ bool Application::loadAndApplyMaterialAsset(const std::string& astRelPath)
     }
 
     sceneMgr_.setModelMaterialId(mid);
+
+    // If the swapped-in model was a glTF, it will have dumped per-submesh .ast
+    // files into modelAutoAstPaths_. Load and bind each one now so materials
+    // are applied immediately without requiring a swapchain recreate.
+    if (modelSwapped) {
+        const auto& autoPaths = sceneMgr_.getModelAutoAstPaths();
+        for (int slot = 0; slot < static_cast<int>(autoPaths.size()); ++slot) {
+            if (autoPaths[slot].empty()) continue;
+            const MaterialId smMid = matMgr_.loadMaterialFromAsset(
+                autoPaths[slot], ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+            if (smMid != kInvalidMaterialId)
+                sceneMgr_.setModelSubMeshMaterialId(slot, smMid);
+        }
+    }
+
     if (mainModelSelected) selectedMaterialId = mid;
     return true;
 }
