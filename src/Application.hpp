@@ -49,6 +49,11 @@ public:
 
     void setModelMaterial(MaterialId id);
     void setBoxMaterial(RenderEntityId eid, MaterialId id);
+
+    // Load a material asset (.ast, JSON) at runtime and apply it to the main
+    // model. astRelPath is relative to res/, e.g. "materials/viking_room.ast".
+    // Returns true on success; on failure, the current model material is kept.
+    bool loadAndApplyMaterialAsset(const std::string& astRelPath);
     MaterialId getModelMaterial()               const { return sceneMgr_.getModelMaterialId(); }
     MaterialId getBoxMaterial(RenderEntityId e) const { return sceneMgr_.getBoxMaterialId(e); }
 

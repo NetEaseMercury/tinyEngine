@@ -465,6 +465,16 @@ void Application::setBoxMaterial(RenderEntityId eid, MaterialId id)
     if (pickedBoxEntityId == eid) selectedMaterialId = id;
 }
 
+bool Application::loadAndApplyMaterialAsset(const std::string& astRelPath)
+{
+    const MaterialId mid = matMgr_.loadMaterialFromAsset(
+        astRelPath, ctx_, cmdMgr_, bufMgr_, fbMgr_, pipeMgr_);
+    if (mid == kInvalidMaterialId) return false;
+    sceneMgr_.setModelMaterialId(mid);
+    if (mainModelSelected) selectedMaterialId = mid;
+    return true;
+}
+
 MaterialId Application::createMeshMaterial(const std::string& name,
                                            const std::string& albedoPath,
                                            const std::string& normalPath,

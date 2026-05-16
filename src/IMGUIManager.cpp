@@ -276,6 +276,41 @@ void UIManager::prepareFrame()
         currentIndex = selectedIndex;
     }
 
+    // ── Material Asset (.ast) Picker ─────────────────────────────────
+    if (vulkanRender) {
+        ImGui::Separator();
+        ImGui::Text("Material Assets (.ast)");
+
+        if (!astAssetScanned_) scanMaterialAssets();
+
+        if (astAssetFiles_.empty()) {
+            ImGui::TextDisabled("(no .ast files in res/materials)");
+            if (ImGui::Button("Rescan##ast")) scanMaterialAssets();
+        } else {
+            std::vector<const char*> items;
+            items.reserve(astAssetFiles_.size());
+            for (const auto& s : astAssetFiles_) items.push_back(s.c_str());
+            if (astAssetIndex_ < 0 || astAssetIndex_ >= static_cast<int>(items.size()))
+                astAssetIndex_ = 0;
+            ImGui::Combo("##astpick", &astAssetIndex_, items.data(), static_cast<int>(items.size()));
+
+            if (ImGui::Button("Apply##ast")) {
+                const std::string rel = std::string("materials/") + astAssetFiles_[astAssetIndex_];
+                if (vulkanRender->loadAndApplyMaterialAsset(rel)) {
+                    astStatusMsg_ = std::string("Loaded: ") + astAssetFiles_[astAssetIndex_];
+                } else {
+                    astStatusMsg_ = std::string("Failed: ") + astAssetFiles_[astAssetIndex_];
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Rescan##ast")) scanMaterialAssets();
+
+            if (!astStatusMsg_.empty()) {
+                ImGui::TextWrapped("%s", astStatusMsg_.c_str());
+            }
+        }
+    }
+
     if (vulkanRender) {
         ImGui::Separator();
         ImGui::Text("Main model (scene mesh)");
@@ -442,4 +477,24 @@ void UIManager::cleanUp()
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
+}
+
+/** @brief 扫描 res/materials/ 下的 .ast 文件填充 astAssetFiles_ */
+void UIManager::scanMaterialAssets()
+{
+    astAssetFiles_.clear();
+    const std::filesystem::path matDir =
+        std::filesystem::path(applicationResourceRoot()) / "res" / "materials";
+    std::error_code ec;
+    if (std::filesystem::is_directory(matDir, ec)) {
+        for (const auto& entry : std::filesystem::directory_iterator(matDir, ec)) {
+            if (entry.is_regular_file(ec) && entry.path().extension() == ".ast") {
+                astAssetFiles_.push_back(entry.path().filename().string());
+            }
+        }
+        std::sort(astAssetFiles_.begin(), astAssetFiles_.end());
+    }
+    astAssetScanned_ = true;
+    if (astAssetIndex_ >= static_cast<int>(astAssetFiles_.size()))
+        astAssetIndex_ = 0;
 }

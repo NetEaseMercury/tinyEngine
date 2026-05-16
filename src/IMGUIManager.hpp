@@ -178,4 +178,13 @@ private:
 	char     matAlbedoPath_[1024]{};
 	char     matNormalPath_[1024]{};
 
+	// Material asset (.ast) picker state
+	std::vector<std::string> astAssetFiles_;   // basenames under res/materials/, sorted
+	int                      astAssetIndex_ = 0;
+	bool                     astAssetScanned_ = false;
+	std::string              astStatusMsg_;
+
+	/** @brief 扫描 res/materials/ 下的 .ast 文件填充 astAssetFiles_ */
+	void scanMaterialAssets();
+
 };
