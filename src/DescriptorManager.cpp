@@ -43,6 +43,9 @@ void DescriptorManager::updateUniformBuffer(uint32_t frameIndex,
     ubo.proj            = proj;
     ubo.materialTint    = glm::vec4(1.f);
     ubo.boxMaterialTint = glm::vec4(1.f);
+    ubo.viewProj        = proj * view;
+    ubo.invView         = glm::inverse(view);
+    ubo.invProj         = glm::inverse(proj);
     memcpy(uboMapped_[frameIndex], &ubo, sizeof(ubo));
 }
 

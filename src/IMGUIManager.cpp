@@ -191,12 +191,6 @@ bool UIManager::refreshVulkanShader()
     return refreshVulkanRender;
 }
 
-/** @brief 见 IMGUIManager.hpp：返回 UI 上相机速度滑动条值 */
-float UIManager::updateSpeed()
-{
-    return speed;
-}
-
 /** @brief 见 IMGUIManager.hpp：每帧 NewFrame、操作面板、ImGuizmo 平移、ImGui::Render */
 void UIManager::prepareFrame()
 {
@@ -215,7 +209,7 @@ void UIManager::prepareFrame()
         You can press and hold the right mouse button to rotate the view.
     )";
     ImGui::Text(prompt.c_str());              
-    ImGui::SliderFloat("Camera Move Speed", &speed, 0.0f, 1.0f);
+
 
     ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
@@ -454,10 +448,10 @@ void UIManager::prepareFrame()
 		glm::mat4 view = vulkanRender->getSceneViewMatrix();
 		glm::mat4 proj = vulkanRender->getSceneProjMatrixForImGuizmo();
 		if (vulkanRender->mainModelSelected) {
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), vulkanRender->mainModelPosition);
+			glm::mat4 model = vulkanRender->mainModelTransform.GetModelMatrix();
 			ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj), ImGuizmo::TRANSLATE, ImGuizmo::WORLD,
 				glm::value_ptr(model), nullptr, nullptr);
-			vulkanRender->mainModelPosition = glm::vec3(model[3]);
+			vulkanRender->mainModelTransform.position = glm::vec3(model[3]);
 		}
 		else if (vulkanRender->pickedBoxEntityId != 0) {
 			glm::vec3 boxPos = vulkanRender->getBoxPosition(vulkanRender->pickedBoxEntityId);

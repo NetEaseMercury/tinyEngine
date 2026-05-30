@@ -151,7 +151,7 @@ void PipelineManager::createMainPipeline(const VulkanContext& ctx, VkRenderPass 
     // Layout is shader-independent and reused by every dynamic mesh pipeline.
     VkPushConstantRange pcr{};
     pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pcr.size       = sizeof(glm::mat4);
+    pcr.size       = sizeof(PushConstants);
 
     VkPipelineLayoutCreateInfo pli{};
     pli.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -372,9 +372,10 @@ VkPipeline PipelineManager::buildBoxPipeline(const VulkanContext& ctx, VkRenderP
     auto instBind = InstanceData::getBindingDescription();
     std::array<VkVertexInputBindingDescription, 2> binds{ vertBind, instBind };
     auto vertAttr = Vertex::getAttributeDescriptions();
-    auto instAttr = InstanceData::getAttributeDescription();
-    std::array<VkVertexInputAttributeDescription, 4> attrs{
-        vertAttr[0], vertAttr[1], vertAttr[2], instAttr };
+    auto instAttr = InstanceData::getAttributeDescriptions();
+    std::array<VkVertexInputAttributeDescription, 7> attrs{
+        vertAttr[0], vertAttr[1], vertAttr[2],
+        instAttr[0], instAttr[1], instAttr[2], instAttr[3] };
 
     VkPipelineVertexInputStateCreateInfo vin{};
     vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;

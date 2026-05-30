@@ -581,10 +581,12 @@ void MaterialManager::setNormalPath(MaterialId id, const std::string& path,
 void MaterialManager::updateAllUBOs(uint32_t imageIndex,
                                     const glm::mat4& view, const glm::mat4& proj)
 {
-    // Derive camera world position from the inverse view matrix so callers
-    // don't have to thread cameraPos through every layer.
-    const glm::mat4 invView = glm::inverse(view);
-    const glm::vec3 camPos  = glm::vec3(invView[3]);
+    // Pre-compute shared matrices once per frame.
+    const glm::mat4 viewProj = proj * view;
+    const glm::mat4 invView  = glm::inverse(view);
+    const glm::mat4 invProj  = glm::inverse(proj);
+    // Camera world position is the translation column of the Camera-to-World matrix (= inverse view).
+    const glm::vec3 camPos   = glm::vec3(invView[3]);
 
     // Hard-coded directional sun for now; later this becomes a Scene/Light API.
     const glm::vec3 sunDir   = glm::normalize(glm::vec3(0.4f, 0.8f, 0.5f));
@@ -603,6 +605,9 @@ void MaterialManager::updateAllUBOs(uint32_t imageIndex,
         ubo.lightDir        = glm::vec4(sunDir, 0.0f);
         ubo.lightColor      = glm::vec4(sunColor, ambient);
         ubo.pbrFactors      = glm::vec4(e.params.metallic, e.params.roughness, 1.0f, 1.0f);
+        ubo.viewProj        = viewProj;
+        ubo.invView         = invView;
+        ubo.invProj         = invProj;
         memcpy(e.uboMapped[imageIndex], &ubo, sizeof(ubo));
     }
 }

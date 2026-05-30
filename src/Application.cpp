@@ -12,10 +12,22 @@
 #include <stdexcept>
 
 Application::Application()
-    : camera_(glm::vec3(0.f, -4.f, 4.f), glm::radians(45.f), glm::radians(180.f), glm::vec3(0.f, 1.f, 0.f))
+    : camera_(glm::vec3(0.f, -4.f, 4.f), glm::radians(45.f), 0.0f, glm::vec3(0.f, 1.f, 0.f))
 {}
 
 // ─── GLFW callback implementations ───────────────────────────────────────────
+
+void Application::scrollCallback(GLFWwindow* w, double /*xoffset*/, double yoffset)
+{
+    auto* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(w));
+    if (!app) return;
+    if (ImGui::GetCurrentContext() && ImGui::GetIO().WantCaptureMouse) return;
+    constexpr float kStep = 0.05f;
+    constexpr float kMin  = 0.01f;
+    constexpr float kMax  = 5.0f;
+    app->camera_.SPEED = glm::clamp(app->camera_.SPEED + static_cast<float>(yoffset) * kStep,
+                                    kMin, kMax);
+}
 
 void Application::framebufferResizeCallback(GLFWwindow* w, int, int)
 {
@@ -28,6 +40,8 @@ void Application::mouseButtonCallback(GLFWwindow* w, int button, int action, int
     auto* app = reinterpret_cast<Application*>(glfwGetWindowUserPointer(w));
     if (button == GLFW_MOUSE_BUTTON_RIGHT) {
         app->rightMouseDown_ = (action == GLFW_PRESS);
+        if (action == GLFW_RELEASE)
+            app->firstMouse_ = true;
     }
     if (app && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
         if (ImGuizmo::IsOver() || ImGuizmo::IsUsing()) return;
@@ -79,6 +93,7 @@ void Application::initGLFW()
     glfwSetFramebufferSizeCallback(window_, framebufferResizeCallback);
     glfwSetCursorPosCallback(window_, mouseCallback);
     glfwSetMouseButtonCallback(window_, mouseButtonCallback);
+    glfwSetScrollCallback(window_, scrollCallback);
     glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 }
 
@@ -90,6 +105,12 @@ void Application::initVulkan()
     cmdMgr_.create(ctx_);
     swapChain_.create(ctx_, window_);
     rpMgr_.create(ctx_, swapChain_);
+
+    // Sync camera aspect ratio with the initial swapchain extent.
+    {
+        const VkExtent2D ext = swapChain_.getExtent();
+        camera_.SetAspectRatio(static_cast<float>(ext.width), static_cast<float>(ext.height));
+    }
 
     bufMgr_.init(ctx_, cmdMgr_);
 
@@ -166,13 +187,12 @@ void Application::gameLoop()
 
         processInput(window_);
         if (!camera_.IsSmoothFocusActive())
-            camera_.UpdataCameraPosition();
+            camera_.UpdataCameraPosition(dt > 0.f ? dt : 1.f / 240.f);
         camera_.UpdateSmoothFocus(dt > 0.f ? dt : 1.f / 240.f);
 
         ui_->prepareFrame();
         drawFrame();
 
-        camera_.SPEED = ui_->updateSpeed();
         if (ui_->refreshVulkanShader()) {
             recreateSwapChain();
         }
@@ -199,14 +219,7 @@ void Application::drawFrame()
         throw std::runtime_error("Failed to acquire swap chain image!");
 
     const glm::mat4 view = camera_.GetViewMatrix();
-    const VkExtent2D ext = swapChain_.getExtent();
-    const glm::mat4 proj = [&]() {
-        glm::mat4 p = glm::perspective(glm::radians(45.f),
-                                       ext.width / static_cast<float>(ext.height),
-                                       0.1f, 500.f);
-        p[1][1] *= -1;
-        return p;
-    }();
+    const glm::mat4 proj = camera_.GetProjectionMatrix();
     matMgr_.updateAllUBOs(imageIndex, view, proj);
 
     VkFence& imgFence = cmdMgr_.getImageInFlight(imageIndex);
@@ -293,9 +306,9 @@ void Application::recordCommandBuffer(VkCommandBuffer cb, uint32_t imageIndex)
         vkCmdBindVertexBuffers(cb, 0, 1, &vb, &off);
         vkCmdBindIndexBuffer(cb, sceneMgr_.getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-        glm::mat4 model = glm::translate(glm::mat4(1.f), mainModelPosition);
+        PushConstants push{ mainModelTransform.GetModelMatrix(), mainModelTransform.GetNormalMatrix() };
         vkCmdPushConstants(cb, pipeMgr_.getMainPipelineLayout(),
-                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &model);
+                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PushConstants), &push);
 
         const auto& subs = sceneMgr_.getModelSubMeshes();
         // Track last-bound pipeline/desc set to skip redundant binds.
@@ -384,6 +397,12 @@ void Application::recreateSwapChain()
     swapChain_.create(ctx_, window_);
     rpMgr_.create(ctx_, swapChain_);
 
+    // Sync camera aspect ratio after swapchain recreate.
+    {
+        const VkExtent2D ext = swapChain_.getExtent();
+        camera_.SetAspectRatio(static_cast<float>(ext.width), static_cast<float>(ext.height));
+    }
+
     if (ui_) ui_->reloadImGuiVulkanAfterSwapchainRecreate(this);
 
     pipeMgr_.recreate(ctx_, rpMgr_,
@@ -395,7 +414,7 @@ void Application::recreateSwapChain()
 
     sceneMgr_.destroyModelBuffers(ctx_);
     sceneMgr_.loadModel(ui_->modelPath, glm::vec3(0.f), bufMgr_);
-    mainModelPosition  = glm::vec3(0.f);
+    mainModelTransform = ObjectTransform{};
     mainModelSelected  = false;
     pickedBoxEntityId  = 0;
 
@@ -462,20 +481,13 @@ void Application::tryPickMainModel(float cx, float cy)
     const int py = std::max(0, std::min(static_cast<int>(fy), maxY));
 
     // Update pick UBO slot 0 with current camera before pick pass
-    const VkExtent2D ext = swapChain_.getExtent();
     const glm::mat4 view = camera_.GetViewMatrix();
-    const glm::mat4 proj = [&]() {
-        glm::mat4 p = glm::perspective(glm::radians(45.f),
-                                       ext.width / static_cast<float>(ext.height),
-                                       0.1f, 500.f);
-        p[1][1] *= -1;
-        return p;
-    }();
+    const glm::mat4 proj = camera_.GetProjectionMatrix();
     descMgr_.updateUniformBuffer(0, view, proj);
 
     const uint32_t id = pickSys_.runPick(ctx_, rpMgr_, fbMgr_, pipeMgr_,
                                           descMgr_.getBoxDescriptorSet(0),
-                                          sceneMgr_, mainModelPosition, ext,
+                                          sceneMgr_, mainModelTransform.position, swapChain_.getExtent(),
                                           static_cast<uint32_t>(px),
                                           static_cast<uint32_t>(py));
 
@@ -501,10 +513,10 @@ void Application::tryBeginCameraFocusOnPick()
     float distance = 4.f;
     if (mainModelSelected) {
         const glm::vec3 ext = sceneMgr_.getModelBoundsMax() - sceneMgr_.getModelBoundsMin();
-        if (glm::length(ext) < 1e-5f) { focus = mainModelPosition; distance = 5.f; }
+        if (glm::length(ext) < 1e-5f) { focus = mainModelTransform.position; distance = 5.f; }
         else {
             focus    = 0.5f * (sceneMgr_.getModelBoundsMin() + sceneMgr_.getModelBoundsMax())
-                       + mainModelPosition;
+                       + mainModelTransform.position;
             distance = glm::max(3.f, glm::length(ext) * 1.75f);
         }
     } else if (pickedBoxEntityId != 0) {
@@ -552,7 +564,7 @@ bool Application::loadAndApplyMaterialAsset(const std::string& astRelPath)
         vkDeviceWaitIdle(ctx_.getDevice());
         sceneMgr_.destroyModelBuffers(ctx_);
         try {
-            sceneMgr_.loadModel(peeked.modelPath, mainModelPosition, bufMgr_);
+            sceneMgr_.loadModel(peeked.modelPath, mainModelTransform.position, bufMgr_);
             modelSwapped = true;
         } catch (const std::exception& ex) {
             std::cerr << "[MaterialAsset] model swap failed (" << peeked.modelPath
@@ -635,10 +647,7 @@ glm::mat4 Application::getSceneViewMatrix()
 
 glm::mat4 Application::getSceneProjMatrixForImGuizmo()
 {
-    const VkExtent2D ext = swapChain_.getExtent();
-    return glm::perspective(glm::radians(45.f),
-                            ext.width / static_cast<float>(ext.height),
-                            0.1f, 500.f);
+    return camera_.GetProjectionMatrixNoFlip();
 }
 
 Application::RenderEntityId Application::addBox(const glm::vec3& pos)

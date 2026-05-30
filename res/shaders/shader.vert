@@ -1,8 +1,11 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
+// Push constants: model matrix + pre-computed normal matrix (128 bytes total).
+// Requires maxPushConstantsSize >= 128 (guaranteed on all desktop GPUs).
 layout(push_constant) uniform PushModel {
-    mat4 model;
+    mat4 model;        // offset   0
+    mat4 normalMatrix; // offset  64
 } pushModel;
 
 layout(binding = 0) uniform UniformBufferObject {
@@ -15,9 +18,13 @@ layout(binding = 0) uniform UniformBufferObject {
     vec4 lightDir;
     vec4 lightColor;
     vec4 pbrFactors;
+    // Pre-computed matrix cache (Phase 2 additions — appended to preserve old offsets)
+    mat4 viewProj;
+    mat4 invView;
+    mat4 invProj;
 } ubo;
 
-// Vertex attributes (location=3 reserved for per-instance position used by box pipeline)
+// Vertex attributes (location=3 reserved for per-instance data used by box pipeline)
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec2 inTexCoord;
@@ -33,13 +40,15 @@ layout(location = 4) out vec4 vWorldTangent; // xyz transformed, w bitangent sig
 void main() {
     vec4 wp     = pushModel.model * vec4(inPosition, 1.0);
     vWorldPos   = wp.xyz;
-    gl_Position = ubo.proj * ubo.view * wp;
+    // Use pre-multiplied viewProj to save one matrix multiplication per vertex.
+    gl_Position = ubo.viewProj * wp;
 
     vColor = inColor;
     vUV    = inTexCoord;
 
-    // Use inverse-transpose for normals to handle non-uniform scale.
-    mat3 nMat = transpose(inverse(mat3(pushModel.model)));
+    // Use CPU-pre-computed normalMatrix (transpose(inverse(model))) instead of
+    // recomputing per-vertex. Eliminates the costly mat3 inverse in the shader.
+    mat3 nMat    = mat3(pushModel.normalMatrix);
     vWorldNormal = nMat * inNormal;
     vWorldTangent = vec4(nMat * inTangent.xyz, inTangent.w);
 }

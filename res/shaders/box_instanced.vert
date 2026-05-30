@@ -6,6 +6,15 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
     vec4 materialTint;
     vec4 boxMaterialTint;
+    vec4 emissive;
+    vec4 cameraPos;
+    vec4 lightDir;
+    vec4 lightColor;
+    vec4 pbrFactors;
+    // Pre-computed matrix cache (Phase 2 additions)
+    mat4 viewProj;
+    mat4 invView;
+    mat4 invProj;
 } ubo;
 
 // Per-vertex attributes (binding = 0, vertex rate)
@@ -13,20 +22,16 @@ layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec2 inTexCoord;
 
-// Per-instance attribute (binding = 1, instance rate)
-layout(location = 3) in vec3 instancePos;
+// Per-instance model matrix (binding = 1, instance rate).
+// A mat4 occupies 4 consecutive locations (each column = one vec4 attribute).
+layout(location = 3) in mat4 instanceModel; // consumes locations 3, 4, 5, 6
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragTexCoord;
 
 void main() {
-    mat4 model = mat4(
-        vec4(1.0, 0.0, 0.0, 0.0),
-        vec4(0.0, 1.0, 0.0, 0.0),
-        vec4(0.0, 0.0, 1.0, 0.0),
-        vec4(instancePos.x, instancePos.y, instancePos.z, 1.0)
-    );
-    gl_Position = ubo.proj * ubo.view * model * vec4(inPosition, 1.0);
-    fragColor = inColor;
+    // Use pre-multiplied viewProj to save one matrix multiplication per vertex.
+    gl_Position  = ubo.viewProj * instanceModel * vec4(inPosition, 1.0);
+    fragColor    = inColor;
     fragTexCoord = inTexCoord;
 }

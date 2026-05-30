@@ -30,6 +30,21 @@ struct UniformBufferObject {
     alignas(16) glm::vec4 lightDir;     // xyz = world-space *to-light* direction (normalized)
     alignas(16) glm::vec4 lightColor;   // rgb = radiance, a = ambient strength
     alignas(16) glm::vec4 pbrFactors;   // x=metallic, y=roughness, z=ao, w=normalScale
+    // Pre-computed matrix cache — appended at end to preserve old shader binding offsets.
+    alignas(16) glm::mat4 viewProj;     // proj * view; shaders use this to save one matrix multiply
+    alignas(16) glm::mat4 invView;      // inverse(view); used for lighting vector transforms / env mapping
+    alignas(16) glm::mat4 invProj;      // inverse(proj); reserved for depth→world reconstruction in post-FX
+};
+
+/**
+ * @brief Main pipeline push constants (vertex stage, 128 bytes).
+ *
+ * Passed per-draw via vkCmdPushConstants with VK_SHADER_STAGE_VERTEX_BIT.
+ * Requires VkPhysicalDeviceLimits::maxPushConstantsSize >= 128 (guaranteed on all desktop GPUs).
+ */
+struct PushConstants {
+    glm::mat4 model;        ///< Model-to-world matrix           (offset   0, 64 bytes)
+    glm::mat4 normalMatrix; ///< transpose(inverse(mat3(model))) (offset  64, 64 bytes)
 };
 
 struct QueueFamilyIndices {

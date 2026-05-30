@@ -467,7 +467,7 @@ void SceneManager::rebuildInstanceBuffer(const VulkanContext& ctx, const BufferM
     std::vector<InstanceData> instances;
     instances.reserve(instanceCount_);
     for (const auto& kv : sorted) {
-        instances.push_back(InstanceData{ kv.second });
+        instances.push_back(InstanceData{ glm::translate(glm::mat4(1.f), kv.second) });
         boxRangeEntityIds_.push_back(kv.first);
     }
 

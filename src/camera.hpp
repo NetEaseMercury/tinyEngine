@@ -6,12 +6,12 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #endif // !GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/hash.hpp>
-
-#define M_PI 3.14159265358979323846
+#include <glm/gtx/quaternion.hpp>
 
 /**
- * @brief Óë WASD ÒÆ¶¯ÓïÒåÏà¹ØµÄ·½ÏòÃ¶¾Ù£¨±¾ÏîÄ¿ÖĞÏà»úÖ÷ÒªÓÃ speedX/speedZ£¬¸ÃÃ¶¾Ù¿ÉÀ©Õ¹£©
+ * @brief WASD ç§»åŠ¨æ–¹å‘æšä¸¾ï¼Œä¾›ä¸Šå±‚è°ƒç”¨è€…æŒ‰éœ€æ‰©å±•ã€‚
  */
 enum Movement {
 	FORWARD,
@@ -22,108 +22,176 @@ enum Movement {
 
 /**
  * @class Camera
- * @brief µÚÒ»ÈË³Æ/¹ìµÀÊ½Ïà»ú£ºÓÃÊÀ½ç¿Õ¼äÎ»ÖÃ + ¸©Ñö½Ç Pitch + Æ«º½½Ç Yaw ÃèÊö³¯Ïò¡£
+ * @brief FPS é£æ ¼è‡ªç”±ç›¸æœºï¼Œå§¿æ€ç”±å››å…ƒæ•° orientation_ æè¿°ã€‚
  *
- * @details ½ÌÑ§Òªµã£º
- * - `GetViewMatrix()` Ê¹ÓÃ glm::lookAt£ºÊÓµãÎª Position£¬¿´Ïò Position + Forward¡£
- * - Forward ÓÉ Pitch¡¢Yaw Í¨¹ıÇò×ø±êÊ½¹«Ê½»Ö¸´£¬Óë¶àÊı FPS ½Ì³ÌÒ»ÖÂ¡£
- * - `UpdataCameraPosition()` °´ Forward / Right / Up »ùµ××öÎ»ÒÆ£¬ÅäºÏ speedX¡¢speedZ Óë SPEED¡£
- * - Æ½»¬¾Û½¹£¨SmoothFocus£©ÔÚÃ¿Ö¡ÓÃ²åÖµÒÆ¶¯ÊÓµã£¬²¢Ê¼ÖÕ×¢ÊÓÄ¿±êµã£¬ÓÃÓÚ¡¸°´ F ¶Ô×¼ÎïÌå¡¹¡£
+ * @details
+ * - æ–¹å‘ç”±ä¸¤ä¸ªç‹¬ç«‹ç´¯ç§¯é‡é©±åŠ¨ï¼š
+ *     yawAccum_   â€” ç»•ä¸–ç•Œ WorldUp è½´åèˆªï¼ˆæ— é™åˆ¶ï¼‰
+ *     pitchAccum_ â€” ç»•å±€éƒ¨ X è½´ä¿¯ä»°ï¼ˆé’³ä½ Â±89Â°ï¼‰
+ *   åˆæˆï¼šorientation_ = yawQuat * pitchQuat
+ * - Forward / Right / Up ç”± orientation_ æ—‹è½¬åŸºå‘é‡å¾—å‡ºï¼Œæ¯å¸§æ›´æ–°ã€‚
+ * - GetViewMatrix() ä½¿ç”¨ glm::lookAt(Position, Position+Forward, WorldUp)ã€‚
+ * - UpdataCameraPosition(dt) æ¥å— deltaTimeï¼Œä¿è¯å¸§ç‡æ— å…³ç§»åŠ¨é€Ÿåº¦ã€‚
+ * - SmoothFocus å¹³æ»‘æ’å€¼ä½ç½®å¹¶å†™å› pitchAccum_/yawAccum_ï¼Œä¸å¹²æ‰°å››å…ƒæ•°é€»è¾‘ã€‚
  */
 class Camera
 {
 public:
 	/**
-	 * @brief ÓÉ¡¸Î»ÖÃ + ¹Û²ìÄ¿±ê + ÊÀ½çÉÏ·½Ïò¡¹¹¹ÔìÏà»ú¡£
-	 * @param position Ïà»úËùÔÚÊÀ½ç×ø±ê
-	 * @param target   ÊÓÏßËùÖ¸µÄµã£¨ÊÀ½ç×ø±ê£©
-	 * @param worldup  ÊÀ½çÉÏ·½Ïò£¬Í¨³£ (0,1,0)£¬ÓÃÓÚÈ·¶¨ Right/Up
+	 * @brief ç”±"ä½ç½® + æ³¨è§†ç›®æ ‡ + ä¸–ç•Œä¸Šæ–¹å‘"æ„é€ ã€‚
+	 * @param position ç›¸æœºä¸–ç•Œåæ ‡
+	 * @param target   æ³¨è§†ç‚¹ï¼ˆä¸–ç•Œåæ ‡ï¼‰
+	 * @param worldup  ä¸–ç•Œä¸Šæ–¹å‘ï¼Œé€šå¸¸ (0,1,0)
 	 */
 	Camera(glm::vec3 position, glm::vec3 target, glm::vec3 worldup);
 
 	/**
-	 * @brief ÓÉÎ»ÖÃÓëÅ·À­½Ç£¨»¡¶È£©¹¹ÔìÏà»ú¡£
-	 * @param position Ïà»úÊÀ½ç×ø±ê
-	 * @param pitch    ¸©Ñö½Ç£¨»¡¶È£©£ºÌ§Í·ÎªÕı
-	 * @param yaw      Æ«º½½Ç£¨»¡¶È£©£ºÈÆÊÀ½ç Up Ğı×ª
-	 * @param worldup  ÊÀ½çÉÏ·½Ïò
+	 * @brief ç”±"ä½ç½® + ä¿¯ä»°/åèˆªï¼ˆå¼§åº¦ï¼‰+ ä¸–ç•Œä¸Šæ–¹å‘"æ„é€ ã€‚
+	 * @param position ç›¸æœºä¸–ç•Œåæ ‡
+	 * @param pitch    ä¿¯ä»°è§’ï¼ˆå¼§åº¦ï¼‰ï¼ŒæŠ¬å¤´ä¸ºæ­£ï¼Œé’³ä½ Â±89Â°
+	 * @param yaw      åèˆªè§’ï¼ˆå¼§åº¦ï¼‰ï¼Œç»• WorldUp æ—‹è½¬
+	 * @param worldup  ä¸–ç•Œä¸Šæ–¹å‘
 	 */
 	Camera(glm::vec3 position, float pitch, float yaw, glm::vec3 worldup);
 
-	/** @brief Ïà»úÔÚÊÀ½ç¿Õ¼äÖĞµÄÎ»ÖÃ */
+	/** @brief ç›¸æœºä¸–ç•Œåæ ‡ */
 	glm::vec3 Position;
-	/** @brief ¹éÒ»»¯Ç°ÏòÏòÁ¿£¨ÓÉ Pitch/Yaw Î¬»¤£¬»òÓÉ lookAt ¹¹ÔìÍÆ³ö£© */
+	/** @brief å•ä½å‰å‘é‡ï¼Œç”± orientation_ æ¨å¯¼ï¼Œæ¯å¸§æ›´æ–° */
 	glm::vec3 Forward;
-	/** @brief Ïà»úÓÒÖá£¨Óë Forward¡¢WorldUp Õı½»£© */
+	/** @brief å•ä½å³å‘é‡ */
 	glm::vec3 Right;
-	/** @brief Ïà»úÉÏÖá */
+	/** @brief å•ä½ä¸Šå‘é‡ï¼ˆç›¸æœºæœ¬åœ°ï¼‰ */
 	glm::vec3 Up;
-	/** @brief ÊÀ½çÉÏ·½Ïò²Î¿¼£¨Í¨³£Îª (0,1,0)£© */
+	/** @brief ä¸–ç•Œä¸Šæ–¹å‘å‚è€ƒï¼Œé€šå¸¸ (0,1,0) */
 	glm::vec3 WorldUp;
-	/** @brief ¸©Ñö½Ç£¨»¡¶È£© */
-	float Pitch;
-	/** @brief Æ«º½½Ç£¨»¡¶È£© */
-	float Yaw;
-	/** @brief Êó±êÓ°Ïì Pitch µÄÁéÃô¶ÈÏµÊı */
-	float SenceX = 0.001f;
-	/** @brief Êó±êÓ°Ïì Yaw µÄÁéÃô¶ÈÏµÊı */
-	float SenceY = 0.001f;
-	/** @brief ÑØÏà»ú Right ·½ÏòµÄÒÆ¶¯ÊäÈë [-1,1]£¬ÓÉ¼üÅÌ A/D ÉèÖÃ */
+
+	/** @brief ä¿¯ä»°çµæ•åº¦ï¼ˆå¼§åº¦/åƒç´ ï¼‰ï¼Œå½±å“é¼ æ ‡ Y è½´ */
+	float SensitivityPitch = 0.003f;
+	/** @brief åèˆªçµæ•åº¦ï¼ˆå¼§åº¦/åƒç´ ï¼‰ï¼Œå½±å“é¼ æ ‡ X è½´ */
+	float SensitivityYaw   = 0.003f;
+
+	/** @brief æ²¿ Right æ–¹å‘çš„å½’ä¸€åŒ–é€Ÿåº¦è¾“å…¥ [-1,1]ï¼Œç”± A/D é”®é©±åŠ¨ */
 	float speedX = 0.0f;
-	/** @brief ÑØÏà»ú Up ·½ÏòµÄÒÆ¶¯ÊäÈë£¨±¾¹¤³ÌÈôÎ´°ó¼üÔò³£Îª 0£© */
+	/** @brief æ²¿ Up æ–¹å‘çš„å½’ä¸€åŒ–é€Ÿåº¦è¾“å…¥ï¼ˆQ/E æ‰©å±•ç”¨ï¼Œé»˜è®¤ 0ï¼‰ */
 	float speedY = 0.0f;
-	/** @brief ÑØÏà»ú Forward ·½ÏòµÄÒÆ¶¯ÊäÈë [-1,1]£¬ÓÉ¼üÅÌ W/S ÉèÖÃ */
+	/** @brief æ²¿ Forward æ–¹å‘çš„å½’ä¸€åŒ–é€Ÿåº¦è¾“å…¥ [-1,1]ï¼Œç”± W/S é”®é©±åŠ¨ */
 	float speedZ = 0.0f;
 
-	/**
-	 * @brief ¼ÆËã¹Û²ì¾ØÕó£¬¹© Vulkan  uniform / ImGui ³¡¾°Ò»ÖÂÊ¹ÓÃ¡£
-	 * @return view = lookAt(Position, Position + Forward, WorldUp)
-	 */
-	glm::mat4 GetViewMatrix();
+	/** @brief æ¯å•ä½æ—¶é—´çš„åŸºç¡€ç§»åŠ¨é€Ÿåº¦ï¼ˆå•ä½/ç§’ï¼‰ï¼Œç”± UI æ»‘æ¡è®¾ç½® */
+	float SPEED = 5.0f;
+
+	// â”€â”€ Projection å‚æ•° â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+	/** @brief æ°´å¹³/å‚ç›´è§†è§’ï¼ˆåº¦ï¼‰ï¼Œé»˜è®¤ 45Â° */
+	float FovDeg     = 45.0f;
+	/** @brief è¿‘è£å‰ªå¹³é¢è·ç¦» */
+	float NearPlane  = 0.1f;
+	/** @brief è¿œè£å‰ªå¹³é¢è·ç¦» */
+	float FarPlane   = 500.0f;
+	/** @brief å®½é«˜æ¯”ï¼ˆwidth/heightï¼‰ï¼Œç”± SetAspectRatio è®¾ç½® */
+	float AspectRatio = 1.0f;
 
 	/**
-	 * @brief ´¦ÀíÊó±êÓÒÍÏ£º¸üĞÂ Pitch/Yaw ²¢Ë¢ĞÂ Forward¡£
-	 * @param deltaX µ±Ç°Ö¡Ïà¶ÔÉÏÒ»Ö¡µÄÊó±ê X Î»ÒÆ£¨ÏñËØ£©
-	 * @param deltaY µ±Ç°Ö¡Ïà¶ÔÉÏÒ»Ö¡µÄÊó±ê Y Î»ÒÆ£¨ÏñËØ£©£»ÏÂÒÆÍ¨³£Ï£Íû¸©ÊÓ£¬¹Ê Pitch -= deltaY * SenceX
+	 * @brief åœ¨ Swapchain å°ºå¯¸å˜åŒ–æ—¶åŒæ­¥æ›´æ–°å®½é«˜æ¯”ã€‚
+	 * @param width  å¸§ç¼“å†²å®½åº¦ï¼ˆåƒç´ ï¼‰
+	 * @param height å¸§ç¼“å†²é«˜åº¦ï¼ˆåƒç´ ï¼‰
+	 */
+	void SetAspectRatio(float width, float height);
+
+/**
+ * @brief è¿”å› View çŸ©é˜µï¼Œç”± worldTransform_ æ¨å¯¼ï¼ˆæ—  glm::lookAtï¼ŒO(1) è½¬ç½®æ—‹è½¬ï¼‰ã€‚
+ */
+glm::mat4 GetViewMatrix() const;
+
+/**
+ * @brief è¿”å›å« Vulkan Y-flip çš„ Projection çŸ©é˜µï¼ˆä¾›æ­£å¸¸æ¸²æŸ“ç”¨ï¼‰ã€‚
+ */
+glm::mat4 GetProjectionMatrix() const;
+
+/**
+ * @brief è¿”å›ä¸å« Y-flip çš„ Projection çŸ©é˜µï¼ˆä¾› ImGuizmo ç­‰ OpenGL æƒ¯ä¾‹ä»£ç ä½¿ç”¨ï¼‰ã€‚
+ */
+glm::mat4 GetProjectionMatrixNoFlip() const;
+
+/**
+ * @brief è¿”å›é¢„ä¹˜ proj * viewï¼ˆä¾› UBO/Shader ç›´æ¥ä½¿ç”¨ï¼Œçœä¸€æ¬¡çŸ©é˜µä¹˜æ³•ï¼‰ã€‚
+ */
+glm::mat4 GetViewProjectionMatrix() const;
+
+/**
+ * @brief è¿”å›ç›¸æœºä¸–ç•Œåæ ‡ï¼Œç›´æ¥å– worldTransform_[3]ï¼Œæ›¿ä»£å¤–éƒ¨ glm::inverse(view)[3]ã€‚
+ */
+glm::vec3 GetWorldPosition() const;
+
+/**
+ * @brief è¿”å›ç›¸æœºçš„ Camera-to-World çŸ©é˜µï¼Œä¾›éœ€è¦ç›¸æœºä½å§¿çš„å¤–éƒ¨ç³»ç»Ÿä½¿ç”¨ã€‚
+ */
+glm::mat4 GetWorldTransform() const;
+
+	/**
+	 * @brief FPS é£æ ¼æ—‹è½¬ï¼šå³é”®æ‹–æ‹½æ—¶ç›¸æœºåŸåœ°è½¬å¤´ï¼ˆyaw/pitchï¼‰ã€‚
+	 *        é¼ æ ‡å‘å³ â†’ yaw å‡å° â†’ ç›¸æœºå³è½¬ â†’ åœºæ™¯å‘å·¦åç§»ã€‚
+	 * @param deltaX å½“å‰å¸§ç›¸å¯¹ä¸Šä¸€å¸§çš„ X åƒç´ ä½ç§»ï¼ˆå‘å³ä¸ºæ­£ï¼‰
+	 * @param deltaY å½“å‰å¸§ç›¸å¯¹ä¸Šä¸€å¸§çš„ Y åƒç´ ä½ç§»ï¼ˆå‘ä¸‹ä¸ºæ­£ï¼‰
 	 */
 	void ProcessMouseMovement(float deltaX, float deltaY);
 
 	/**
-	 * @brief ¸ù¾İ speedX/speedY/speedZ Óë SPEED »ı·ÖÆ½ÒÆ Position£¨²»ÔÚ´Ëº¯ÊıÄÚ¶Á¼üÅÌ£©
+	 * @brief è®¾ç½®è½¨é“æ—‹è½¬çš„ä¸­å¿ƒç‚¹ï¼ˆä¸–ç•Œåæ ‡ï¼‰ï¼Œé€šå¸¸ä¸ºæ¨¡å‹ä¸­å¿ƒã€‚
+	 *        BeginSmoothFocus ä¼šè‡ªåŠ¨è°ƒç”¨ï¼›æ¨¡å‹åŠ è½½åä¹Ÿåº”æ‰‹åŠ¨è°ƒç”¨ä¸€æ¬¡ã€‚
 	 */
-	void UpdataCameraPosition();
+	void SetOrbitCenter(const glm::vec3& center) { orbitCenter_ = center; }
 
-	/** @brief ÉèÖÃÃ¿Ö¡Î»ÒÆ±¶ÂÊ£¨¿ÉÓë UI »¬¶¯ÌõÁª¶¯£© */
+	/**
+	 * @brief æ ¹æ® speedX/Y/Zã€SPEED å’Œ deltaTime æ›´æ–° Positionã€‚
+	 * @param deltaTime æœ¬å¸§æ—¶é•¿ï¼ˆç§’ï¼‰ï¼Œä¿è¯ç§»åŠ¨é€Ÿåº¦å¸§ç‡æ— å…³
+	 */
+	void UpdataCameraPosition(float deltaTime);
+
+	/** @brief è®¾ç½®ç§»åŠ¨é€Ÿåº¦åŸºå‡†å€¼ï¼Œé€šå¸¸ç”± UI æ»‘æ¡è°ƒç”¨ */
 	void SetSpeed(float speed);
 
 	/**
-	 * @brief ¿ªÊ¼Ò»¶ÎÆ½»¬¡¸·Éµ½Ä¿±êÅÔ²¢×¢ÊÓ¸Ãµã¡¹µÄ¶¯»­¡£
-	 * @param worldFocusPoint  Òª¿´µÄÊÀ½ç×ø±êµã£¨ÈçÄ£ĞÍ°üÎ§ºĞÖĞĞÄ£©
-	 * @param cameraDistance   ¶¯»­½áÊøºóÏà»ú¾à¸ÃµãµÄ¾àÀë£¨ÑØµ±Ç°ÊÓÏß·½ÏòÔÚ½¹µãÍâ²àÈ¡µã£©
-	 * @param durationSec      ¶¯»­Ê±³¤£¨Ãë£©£»¡Ü0.01 Ê±Ê¹ÓÃÄÚÖÃÄ¬ÈÏÔ¼ 0.65s
+	 * @brief å¼€å§‹å¹³æ»‘èšç„¦åŠ¨ç”»ï¼Œå°†ç›¸æœºå¹³æ»‘ç§»å‘ worldFocusPoint é™„è¿‘å¹¶æ³¨è§†è¯¥ç‚¹ã€‚
+	 * @param worldFocusPoint ç›®æ ‡èšç„¦ç‚¹ï¼ˆä¸–ç•Œåæ ‡ï¼‰
+	 * @param cameraDistance  åŠ¨ç”»ç»“æŸæ—¶ç›¸æœºè·ç›®æ ‡ç‚¹çš„è·ç¦»
+	 * @param durationSec     åŠ¨ç”»æ—¶é•¿ï¼ˆç§’ï¼‰ï¼Œ<0.01 æ—¶ä½¿ç”¨é»˜è®¤ 0.65s
 	 */
 	void BeginSmoothFocus(const glm::vec3& worldFocusPoint, float cameraDistance, float durationSec);
 
 	/**
-	 * @brief ÍÆ½øÆ½»¬¾Û½¹¶¯»­£¨Ó¦ÔÚÃ¿Ö¡µ÷ÓÃ£¬´«ÈëÖ¡¼ä¸ô deltaTime£©
+	 * @brief é€å¸§æ¨è¿›å¹³æ»‘èšç„¦ï¼Œåº”æ¯å¸§è°ƒç”¨å¹¶ä¼ å…¥ deltaTimeã€‚
 	 */
 	void UpdateSmoothFocus(float deltaTime);
 
-	/** @brief ÊÇ·ñÈÔ´¦ÓÚÆ½»¬¾Û½¹ÖĞ£»ÎªÕæÊ±Ö÷Ñ­»·¿É²»Ó¦ÓÃ WASD Î»ÒÆÒÔÃâ³åÍ» */
+	/** @brief å¹³æ»‘èšç„¦è¿›è¡Œä¸­æ—¶è¿”å› trueï¼ŒæœŸé—´åº”ç¦ç”¨ WASD ä½ç§» */
 	[[nodiscard]] bool IsSmoothFocusActive() const { return smoothFocusActive_; }
 
-	/** @brief ¼üÅÌÒÆ¶¯ËÙ¶ÈÏµÊı£¬Óë speedX/speedZ Ïà³ËµÃµ½Êµ¼Ê²½³¤ */
-	float SPEED = 0.1f;
-
 private:
-	/** @brief ÓÉµ±Ç° Pitch¡¢Yaw ÖØĞ´ Forward¡¢Right¡¢Up */
+	/** @brief ç›¸æœºå§¿æ€å››å…ƒæ•°ï¼Œç”± yawAccum_ å’Œ pitchAccum_ ç»„åˆè€Œæˆ */
+	glm::quat orientation_;
+
+	/** @brief ç´¯ç§¯åèˆªè§’ï¼ˆå¼§åº¦ï¼‰ï¼Œç»• WorldUp æ—‹è½¬ï¼Œæ— é™åˆ¶ */
+	float yawAccum_   = 0.0f;
+	/** @brief ç´¯ç§¯ä¿¯ä»°è§’ï¼ˆå¼§åº¦ï¼‰ï¼Œé’³ä½åœ¨ [-89Â°, +89Â°] */
+	float pitchAccum_ = 0.0f;
+
+	/** @brief ç›¸æœºçš„ Camera-to-World çŸ©é˜µï¼›ä» UpdataCameraVectors() ç»´æŠ¤ï¼Œå§‹ç»ˆä¸ Position/orientation_ åŒæ­¥ */
+	glm::mat4 worldTransform_{ 1.0f };
+
+	/** @brief ä» orientation_ é‡å»º Forward / Right / Upï¼ŒåŒæ—¶é‡å»º worldTransform_ */
 	void UpdataCameraVectors();
 
-	bool smoothFocusActive_ = false;
-	float smoothFocusT_ = 0.f;
-	float smoothFocusDuration_ = 0.65f;
+	/** @brief ç”± pitchAccum_ / yawAccum_ é‡å»º orientation_ï¼Œç„¶åè°ƒç”¨ UpdataCameraVectors */
+	void RebuildOrientation();
+
+	bool      smoothFocusActive_   = false;
+	float     smoothFocusT_        = 0.f;
+	float     smoothFocusDuration_ = 0.65f;
 	glm::vec3 smoothFocusPos0_{};
 	glm::vec3 smoothFocusPos1_{};
 	glm::vec3 smoothFocusTarget_{};
+
+	/** @brief è½¨é“æ—‹è½¬ä¸­å¿ƒï¼ˆä¸–ç•Œåæ ‡ï¼‰ï¼Œå³é”®æ‹–æ‹½æ—¶ç›¸æœºå›´ç»•æ­¤ç‚¹æ—‹è½¬ */
+	glm::vec3 orbitCenter_{ 0.0f, 0.0f, 0.0f };
 };
 #endif

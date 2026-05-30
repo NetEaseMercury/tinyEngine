@@ -78,7 +78,7 @@ struct VertexHash {
 
 /** @brief Per-instance data for GPU instanced box rendering (binding=1, instance rate) */
 struct InstanceData {
-    glm::vec3 position;
+    glm::mat4 modelMatrix;
 
     static VkVertexInputBindingDescription getBindingDescription() {
         VkVertexInputBindingDescription desc{};
@@ -88,13 +88,15 @@ struct InstanceData {
         return desc;
     }
 
-    static VkVertexInputAttributeDescription getAttributeDescription() {
-        VkVertexInputAttributeDescription attr{};
-        attr.binding = 1;
-        attr.location = 3;
-        attr.format = VK_FORMAT_R32G32B32_SFLOAT;
-        attr.offset = offsetof(InstanceData, position);
-        return attr;
+    static std::array<VkVertexInputAttributeDescription, 4> getAttributeDescriptions() {
+        std::array<VkVertexInputAttributeDescription, 4> attrs{};
+        for (uint32_t i = 0; i < 4; ++i) {
+            attrs[i].binding  = 1;
+            attrs[i].location = 3 + i;
+            attrs[i].format   = VK_FORMAT_R32G32B32A32_SFLOAT;
+            attrs[i].offset   = sizeof(glm::vec4) * i;
+        }
+        return attrs;
     }
 };
 

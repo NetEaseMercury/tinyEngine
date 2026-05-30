@@ -14,6 +14,10 @@ layout(binding = 0) uniform UniformBufferObject {
     vec4 lightDir;           // xyz = world-space *to-light* direction (normalized)
     vec4 lightColor;         // rgb = radiance, a = ambient strength
     vec4 pbrFactors;         // x=metallic, y=roughness, z=ao, w=normalScale
+    // Pre-computed matrix cache (Phase 2 additions)
+    mat4 viewProj;
+    mat4 invView;
+    mat4 invProj;
 } ubo;
 
 layout(binding = 1) uniform sampler2D albedoTex;

@@ -13,6 +13,7 @@
 #include "IMGUIManager.hpp"
 #include "camera.hpp"
 #include "VulkanTypes.hpp"
+#include "Transform.hpp"
 #include <glm/glm.hpp>
 
 class Application {
@@ -23,7 +24,7 @@ public:
     void run();
 
     // Public state read/written by UIManager
-    glm::vec3      mainModelPosition{ 0.f, 0.f, 0.f };
+    ObjectTransform mainModelTransform;             ///< Main model TRS (position, rotation, scale)
     bool           mainModelSelected  = false;
     RenderEntityId pickedBoxEntityId  = 0;
     MaterialId     selectedMaterialId = kInvalidMaterialId;
@@ -110,4 +111,5 @@ private:
     static void framebufferResizeCallback(GLFWwindow* w, int, int);
     static void mouseButtonCallback(GLFWwindow* w, int button, int action, int mods);
     static void mouseCallback(GLFWwindow* w, double xpos, double ypos);
+    static void scrollCallback(GLFWwindow* w, double xoffset, double yoffset);
 };

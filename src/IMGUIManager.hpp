@@ -72,11 +72,6 @@ public:
 	bool refreshVulkanShader();
 
 	/**
-	 * @brief 供外部读回 UI 上的「相机移动速度」滑动条值（0~1 区间由面板限定）。
-	 */
-	float updateSpeed();
-
-	/**
 	 * @brief 设置是否需要在下一帧刷新 Vulkan（与 refreshVulkanShader 读侧配对）。
 	 */
 	void setRefreshVulkanStatus(bool status);
@@ -110,10 +105,8 @@ public:
 	/** @brief 当前主纹理路径 */
 	std::string texturePath;
 
-	/** @brief UI 相机速度滑动条的内部值，默认 0.5 */
-	float speed = 0.5f;
-
 private:
+
 
 	/** @brief 根据 fragShaderPath 生成 boxFragShaderPath（frag.spv → box.spv） */
 	void syncBoxFragShaderPathFromFrag();
