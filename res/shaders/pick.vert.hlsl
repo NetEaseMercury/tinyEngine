@@ -4,8 +4,7 @@ struct PickPush {
 };
 [[vk::push_constant]] PickPush push;
 
-[[vk::binding(0)]]
-cbuffer UBO : register(b0) {
+struct UBOData {
     float4x4 view;
     float4x4 proj;
     float4   materialTint;
@@ -19,6 +18,8 @@ cbuffer UBO : register(b0) {
     float4x4 invView;
     float4x4 invProj;
 };
+[[vk::binding(0)]]
+ConstantBuffer<UBOData> ubo : register(b0);
 
 struct VSInput {
     [[vk::location(0)]] float3 pos   : POSITION;

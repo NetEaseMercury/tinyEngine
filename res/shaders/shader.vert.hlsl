@@ -1,13 +1,10 @@
-// Push constants: model matrix + pre-computed normal matrix (128 bytes).
-// Requires maxPushConstantsSize >= 128 (guaranteed on all desktop GPUs).
 struct PushModel {
-    float4x4 model;        // offset   0
-    float4x4 normalMatrix; // offset  64
+    float4x4 model;
+    float4x4 normalMatrix;
 };
 [[vk::push_constant]] PushModel pushModel;
 
-[[vk::binding(0)]]
-cbuffer UBO : register(b0) {
+struct UBOData {
     float4x4 view;
     float4x4 proj;
     float4   materialTint;
@@ -21,6 +18,8 @@ cbuffer UBO : register(b0) {
     float4x4 invView;
     float4x4 invProj;
 };
+[[vk::binding(0)]]
+ConstantBuffer<UBOData> ubo : register(b0);
 
 struct VSInput {
     [[vk::location(0)]] float3 pos    : POSITION;
@@ -32,10 +31,10 @@ struct VSInput {
 
 struct VSOutput {
     float4 pos : SV_POSITION;
-    [[vk::location(0)]] float3 color       : COLOR0;
-    [[vk::location(1)]] float2 uv          : TEXCOORD0;
-    [[vk::location(2)]] float3 worldPos    : TEXCOORD1;
-    [[vk::location(3)]] float3 worldNormal : TEXCOORD2;
+    [[vk::location(0)]] float3 color        : COLOR0;
+    [[vk::location(1)]] float2 uv           : TEXCOORD0;
+    [[vk::location(2)]] float3 worldPos     : TEXCOORD1;
+    [[vk::location(3)]] float3 worldNormal  : TEXCOORD2;
     [[vk::location(4)]] float4 worldTangent : TEXCOORD3;
 };
 

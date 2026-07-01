@@ -35,7 +35,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/ImGuizmo
                 thirdParty/renderdoc
                 thirdParty/json/include
-                thirdParty/cgltf/cgltf
+                thirdParty/cgltf
         )
 
 
@@ -47,9 +47,34 @@ get_target_property(TARGET_DIR tinyEngine RUNTIME_OUTPUT_DIRECTORY)
 # 添加预处理命令
 add_definitions(-DGLEW_STATIC)
 
-# ── HLSL → SPIR-V via DXC ──────────────────────────────────────────────────
-find_program(DXC_EXECUTABLE dxc REQUIRED)
-message(STATUS "DXC found: ${DXC_EXECUTABLE}")
+# ── HLSL → SPIR-V via DXC (auto-download if missing) ────────────────────────
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(DXC_ARCH x64)
+else()
+    set(DXC_ARCH x86)
+endif()
+set(DXC_DIR "${CMAKE_SOURCE_DIR}/thirdParty/dxc")
+set(DXC_EXE "${DXC_DIR}/bin/${DXC_ARCH}/dxc.exe")
+set(DXC_URL "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip")
+
+if(NOT EXISTS "${DXC_EXE}")
+    set(DXC_ZIP "${DXC_DIR}/dxc.zip")
+    if(NOT EXISTS "${DXC_ZIP}")
+        message(STATUS "Downloading DXC from ${DXC_URL} ...")
+        file(DOWNLOAD "${DXC_URL}" "${DXC_ZIP}" STATUS downloadStatus TIMEOUT 120)
+        list(GET downloadStatus 0 statusCode)
+        if(NOT statusCode EQUAL 0)
+            list(GET downloadStatus 1 errorMsg)
+            message(FATAL_ERROR "DXC download failed: ${errorMsg}")
+        endif()
+    endif()
+    message(STATUS "Extracting DXC to ${DXC_DIR} ...")
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${DXC_ZIP}"
+        WORKING_DIRECTORY "${DXC_DIR}")
+    file(REMOVE "${DXC_ZIP}")
+endif()
+set(DXC_EXECUTABLE "${DXC_EXE}")
+message(STATUS "DXC: ${DXC_EXECUTABLE}")
 
 set(SHADER_SRC_DIR "${CMAKE_SOURCE_DIR}/res/shaders")
 set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/res/shaders")

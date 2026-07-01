@@ -360,3 +360,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# DXC shader compiler (auto-downloaded by CMake)
+thirdParty/dxc/

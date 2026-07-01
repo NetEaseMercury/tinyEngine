@@ -1,10 +1,4 @@
-// PBR pixel shader -- Cook-Torrance + GGX/Schlick/Smith.
-// Framebuffer is sRGB (VK_FORMAT_B8G8R8A8_SRGB), so GPU does gamma encoding;
-// we output linear color. Sampled textures (albedo/emissive) are bound as
-// VK_FORMAT_R8G8B8A8_SRGB -- GPU decodes to linear on sample.
-
-[[vk::binding(0)]]
-cbuffer UBO : register(b0) {
+struct UBOData {
     float4x4 view;
     float4x4 proj;
     float4   materialTint;
@@ -13,11 +7,13 @@ cbuffer UBO : register(b0) {
     float4   cameraPos;
     float4   lightDir;
     float4   lightColor;
-    float4   pbrFactors;   // x=metallic, y=roughness, z=ao, w=normalScale
+    float4   pbrFactors;
     float4x4 viewProj;
     float4x4 invView;
     float4x4 invProj;
 };
+[[vk::binding(0)]]
+ConstantBuffer<UBOData> ubo : register(b0);
 
 [[vk::combinedImageSampler]][[vk::binding(1)]] Texture2D<float4> albedoTex    : register(t0);
 [[vk::combinedImageSampler]][[vk::binding(1)]] SamplerState      albedoState  : register(s0);
@@ -32,10 +28,10 @@ cbuffer UBO : register(b0) {
 
 struct PSInput {
     float4 pos : SV_POSITION;
-    [[vk::location(0)]] float3 color       : COLOR0;
-    [[vk::location(1)]] float2 uv          : TEXCOORD0;
-    [[vk::location(2)]] float3 worldPos    : TEXCOORD1;
-    [[vk::location(3)]] float3 worldNormal : TEXCOORD2;
+    [[vk::location(0)]] float3 color        : COLOR0;
+    [[vk::location(1)]] float2 uv           : TEXCOORD0;
+    [[vk::location(2)]] float3 worldPos     : TEXCOORD1;
+    [[vk::location(3)]] float3 worldNormal  : TEXCOORD2;
     [[vk::location(4)]] float4 worldTangent : TEXCOORD3;
 };
 
@@ -123,8 +119,6 @@ float4 main(PSInput input) : SV_TARGET {
     float3 emissive = emissiveTex.Sample(emissiveState, input.uv).rgb * ubo.emissive.rgb;
 
     float3 color = ambient + Lo + emissive;
-
-    // Reinhard tonemap. Framebuffer sRGB will gamma-encode automatically.
     color = color / (color + float3(1.0, 1.0, 1.0));
 
     return float4(color, alpha);
