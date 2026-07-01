@@ -47,7 +47,37 @@ get_target_property(TARGET_DIR tinyEngine RUNTIME_OUTPUT_DIRECTORY)
 # 添加预处理命令
 add_definitions(-DGLEW_STATIC)
 
-# 拷贝资源（configure 时一次 + 每次链接后同步，避免新增 box.spv 等未进输出目录）
+# ── HLSL → SPIR-V via DXC ──────────────────────────────────────────────────
+find_program(DXC_EXECUTABLE dxc REQUIRED)
+message(STATUS "DXC found: ${DXC_EXECUTABLE}")
+
+set(SHADER_SRC_DIR "${CMAKE_SOURCE_DIR}/res/shaders")
+set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/res/shaders")
+file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
+
+function(dxc_compile SPV_NAME PROFILE HLSL_SRC)
+    set(SPV_PATH "${SHADER_OUT_DIR}/${SPV_NAME}")
+    add_custom_command(
+        OUTPUT "${SPV_PATH}"
+        COMMAND ${DXC_EXECUTABLE} -spirv -T ${PROFILE} -E main
+                "${HLSL_SRC}" -Fo "${SPV_PATH}" -O3
+        DEPENDS "${HLSL_SRC}"
+        COMMENT "DXC ${HLSL_SRC} → ${SPV_NAME}"
+    )
+    set(SHADER_SPV_FILES "${SHADER_SPV_FILES};${SPV_PATH}" PARENT_SCOPE)
+endfunction()
+
+dxc_compile(vert.spv       vs_6_0 "${SHADER_SRC_DIR}/shader.vert.hlsl")
+dxc_compile(frag.spv       ps_6_0 "${SHADER_SRC_DIR}/shader.frag.hlsl")
+dxc_compile(box_vert.spv   vs_6_0 "${SHADER_SRC_DIR}/box_instanced.vert.hlsl")
+dxc_compile(box.spv        ps_6_0 "${SHADER_SRC_DIR}/box.frag.hlsl")
+dxc_compile(pick_vert.spv  vs_6_0 "${SHADER_SRC_DIR}/pick.vert.hlsl")
+dxc_compile(pick_frag.spv  ps_6_0 "${SHADER_SRC_DIR}/pick.frag.hlsl")
+
+add_custom_target(shaders DEPENDS ${SHADER_SPV_FILES})
+add_dependencies(${PROJECT_NAME} shaders)
+
+# 拷贝资源（configure 时一次 + 每次链接后同步）
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/res")
 set(DESTINATION_DIR "${CMAKE_BINARY_DIR}")
 file(COPY ${SOURCE_DIR} DESTINATION ${DESTINATION_DIR})
