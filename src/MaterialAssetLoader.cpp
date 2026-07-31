@@ -1,4 +1,5 @@
 #include "MaterialAssetLoader.hpp"
+#include "EnginePaths.hpp"
 #include "nlohmann/json.hpp"
 #include <fstream>
 
@@ -17,8 +18,7 @@ glm::vec4 readVec4(const json& arr, const glm::vec4& fallback)
 
 std::string resolveRel(const std::string& rel)
 {
-    if (rel.empty()) return {};
-    return std::string(MaterialAssetLoader::kResRoot) + rel;
+    return te::paths::resolve(rel);
 }
 
 } // namespace
@@ -27,7 +27,7 @@ bool MaterialAssetLoader::load(const std::string& astRelPath,
                                MaterialAssetDesc& out,
                                std::string* err)
 {
-    const std::string fullPath = std::string(kResRoot) + astRelPath;
+    const std::string fullPath = te::paths::resolve(astRelPath);
     std::ifstream f(fullPath);
     if (!f.is_open()) {
         if (err) *err = "cannot open file: " + fullPath;

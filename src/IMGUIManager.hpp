@@ -18,103 +18,105 @@ class Application;
 
 /**
  * @class UIManager
- * @brief Dear ImGui + ImGui_ImplVulkan/GLFW 封装：负责每帧 UI、与 VulkanRender 的资源/场景联动、ImGuizmo 平移手柄。
+ * @brief Dear ImGui + ImGui_ImplVulkan/GLFW wrapper: per-frame UI, resource/scene
+ *        coordination with VulkanRender, and the ImGuizmo translate handle.
  *
- * @details 教学流水线：initIMGUI →（每帧）prepareFrame（NewFrame + 面板 + Manipulate + ImGui::Render）→
- * 录制命令缓冲时在 swapchain 上绘制 ImGui 绘制数据。
+ * @details Learning pipeline: initIMGUI → (per frame) prepareFrame (NewFrame +
+ * panels + Manipulate + ImGui::Render) → draw the ImGui draw data onto the
+ * swapchain while recording the command buffer.
  */
 class UIManager {
 
 public:
 
-	/** @brief 默认构造：成员多为零初始化或空指针 */
+	/** @brief Default constructor: members are mostly zero-initialized or null */
 	UIManager() = default;
 
-	/** @brief 虚析构：派生类可重写；当前由 cleanUp 显式释放 ImGui/Vulkan 后端 */
+	/** @brief Virtual destructor: overridable; ImGui/Vulkan backends are explicitly released via cleanUp */
 	virtual ~UIManager() = default;
 
-	/** @brief ImGui 清屏色，可由面板 ColorEdit3 修改并供渲染通路读回 */
+	/** @brief ImGui clear color; editable via the panel ColorEdit3 and read back by the render path */
 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
 	/**
-	 * @brief 创建 ImGui 上下文、绑定 GLFW 与 Vulkan 后端；需在 VulkanRender 已创建 window/device/renderPass 后调用。
+	 * @brief Create the ImGui context and bind the GLFW and Vulkan backends; call after VulkanRender has created window/device/renderPass.
 	 */
 	void initIMGUI();
 
 	/**
-	 * @brief 保存 VkInstance 与可选分配器；在 initImGuiVulkanBackend 前必须设置 Instance。
+	 * @brief Store the VkInstance and optional allocator; Instance must be set before initImGuiVulkanBackend.
 	 */
 	void setVulkanInstance(const VkInstance& instance, VkAllocationCallbacks* allocator);
 
 	/**
-	 * @brief 销毁 ImGui Vulkan 后端并释放 GLFW 相关；进程退出或重建前应调用。
+	 * @brief Destroy the ImGui Vulkan backend and release GLFW-related state; call before process exit or recreation.
 	 */
 	void cleanUp();
 
 	/**
-	 * @brief 每帧在 drawFrame 录制前调用：NewFrame、业务窗口、ImGuizmo::Manipulate、ImGui::Render。
+	 * @brief Called every frame before drawFrame recording: NewFrame, business windows, ImGuizmo::Manipulate, ImGui::Render.
 	 */
 	void prepareFrame();
 
 	/**
-	 * @brief 交换链重建后：Shutdown ImGui Vulkan 后端并用新的 RenderPass/ImageCount 重新 Init。
+	 * @brief After swapchain recreation: Shutdown the ImGui Vulkan backend and re-Init with the new RenderPass/ImageCount.
 	 */
 	void reloadImGuiVulkanAfterSwapchainRecreate(Application* app);
 
 	/**
-	 * @brief 设置逻辑设备与物理设备句柄，供 ImGui_ImplVulkan_Init 使用。
+	 * @brief Set the logical and physical device handles for ImGui_ImplVulkan_Init.
 	 */
 	void setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
 
 	/**
-	 * @brief 若返回 true，主循环应触发 recreateSwapChain（例如着色器路径变更）。
+	 * @brief When true, the main loop should trigger recreateSwapChain (e.g. shader path changed).
 	 */
 	bool refreshVulkanShader();
 
 	/**
-	 * @brief 设置是否需要在下一帧刷新 Vulkan（与 refreshVulkanShader 读侧配对）。
+	 * @brief Set whether Vulkan needs a refresh next frame (paired with the refreshVulkanShader read side).
 	 */
 	void setRefreshVulkanStatus(bool status);
 
 	/**
-	 * @brief 用 exe 旁 res/ 目录填充默认 shader/model/texture 路径字符串缓冲区。
+	 * @brief Fill the default shader/model/texture path buffers from the res/ directory next to the exe.
 	 */
 	void setModelDefaultPath();
 
-	/** @brief 关联场景渲染器，供面板读写选中物体、矩阵与资源路径 */
+	/** @brief Attach the scene renderer so panels can read/write selection, matrices and resource paths */
 	void setVulkanRender(Application* app) { vulkanRender = app; }
 
-	/** @brief 返回当前清屏颜色（RGBA） */
+	/** @brief Return the current clear color (RGBA) */
 	[[nodiscard]] ImVec4 getClearColor() const { return clear_color; }
 
-	/** @brief 当前主模型顶点着色器 SPIR-V 路径（可从面板同步） */
+	/** @brief Current main-model vertex shader SPIR-V path (syncable from the panel) */
 	std::string vertexShaderPath;
 
-	/** @brief 当前主模型片段着色器 SPIR-V 路径 */
+	/** @brief Current main-model fragment shader SPIR-V path */
 	std::string fragShaderPath;
 
-	/** @brief 盒子所用片段着色器路径（通常由 frag 路径派生为 box.spv） */
+	/** @brief Box fragment shader path (usually derived from the frag path as box.spv) */
 	std::string boxFragShaderPath;
 
-	/** @brief 盒子所用顶点着色器 SPIR-V 路径（由 vert.spv 派生为 box_vert.spv） */
+	/** @brief Box vertex shader SPIR-V path (derived from vert.spv as box_vert.spv) */
 	std::string boxVertShaderPath;
 
-	/** @brief 当前加载的 OBJ 模型路径 */
+	/** @brief Currently loaded OBJ model path */
 	std::string modelPath;
 
-	/** @brief 当前主纹理路径 */
+	/** @brief Current main texture path */
 	std::string texturePath;
 
 private:
 
 
-	/** @brief 根据 fragShaderPath 生成 boxFragShaderPath（frag.spv → box.spv） */
+	/** @brief Generate boxFragShaderPath from fragShaderPath (frag.spv → box.spv) */
 	void syncBoxFragShaderPathFromFrag();
 
-	/** @brief 根据 vertexShaderPath 生成 boxVertShaderPath（vert.spv → box_vert.spv） */
+	/** @brief Generate boxVertShaderPath from vertexShaderPath (vert.spv → box_vert.spv) */
 	void syncBoxVertShaderPathFromVert();
 
-	/** @brief 使用已保存的 Instance/Device/Queue 等调用 ImGui_ImplVulkan_Init */
+	/** @brief Call ImGui_ImplVulkan_Init with the stored Instance/Device/Queue etc. */
 	void initImGuiVulkanBackend();
 
 	VkAllocationCallbacks* Allocator = nullptr;
@@ -131,15 +133,15 @@ private:
 
 	VkPipelineCache PipelineCache = VK_NULL_HANDLE;
 
-	/** @brief ImGui IO 快照（部分路径历史代码使用） */
+	/** @brief ImGui IO snapshot (used by some legacy code paths) */
 	ImGuiIO g_io{};
 
 	GLFWwindow* window = nullptr;
 
-	/** @brief 为 true 时 refreshVulkanShader() 返回 true */
+	/** @brief When true, refreshVulkanShader() returns true */
 	bool refreshVulkanRender = false;
 
-	/** @brief 顶点着色器目录前缀 + 文件名缓冲区 */
+	/** @brief Vertex shader directory prefix + filename buffer */
 	char VertexShaderPath[1024]{};
 
 	char FragShdaerPath[1024]{};
@@ -177,7 +179,7 @@ private:
 	bool                     astAssetScanned_ = false;
 	std::string              astStatusMsg_;
 
-	/** @brief 扫描 res/materials/ 下的 .ast 文件填充 astAssetFiles_ */
+	/** @brief Scan .ast files under res/materials/ into astAssetFiles_ */
 	void scanMaterialAssets();
 
 };

@@ -44,6 +44,7 @@ void PipelineManager::create(const VulkanContext& ctx, const RenderPassManager& 
     const auto p = vertSpv.find_last_of("/\\");
     const std::string dir = (p != std::string::npos) ? vertSpv.substr(0, p + 1) : "";
     createPickPipeline(ctx, rpMgr.getPickRenderPass(), dir + "pick_vert.spv", extent);
+    createUtilityPipelines(ctx, rpMgr.getMainRenderPass(), dir, extent);
 }
 
 void PipelineManager::recreate(const VulkanContext& ctx, const RenderPassManager& rpMgr,
@@ -59,6 +60,7 @@ void PipelineManager::recreate(const VulkanContext& ctx, const RenderPassManager
     const auto p = vertSpv.find_last_of("/\\");
     const std::string dir = (p != std::string::npos) ? vertSpv.substr(0, p + 1) : "";
     createPickPipeline(ctx, rpMgr.getPickRenderPass(), dir + "pick_vert.spv", extent);
+    createUtilityPipelines(ctx, rpMgr.getMainRenderPass(), dir, extent);
 }
 
 void PipelineManager::destroy(const VulkanContext& ctx)
@@ -78,6 +80,10 @@ void PipelineManager::destroyPipelines(const VulkanContext& ctx)
     }
     dynamicPipelines_.clear();
 
+    if (gizmoPipeline_      != VK_NULL_HANDLE) { vkDestroyPipeline(dev, gizmoPipeline_, nullptr);           gizmoPipeline_      = VK_NULL_HANDLE; }
+    if (outlinePipeline_    != VK_NULL_HANDLE) { vkDestroyPipeline(dev, outlinePipeline_, nullptr);         outlinePipeline_    = VK_NULL_HANDLE; }
+    if (markPipeline_       != VK_NULL_HANDLE) { vkDestroyPipeline(dev, markPipeline_, nullptr);            markPipeline_       = VK_NULL_HANDLE; }
+    if (utilityPipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(dev, utilityPipelineLayout_, nullptr); utilityPipelineLayout_ = VK_NULL_HANDLE; }
     if (pickPipeline_       != VK_NULL_HANDLE) { vkDestroyPipeline(dev, pickPipeline_, nullptr);            pickPipeline_       = VK_NULL_HANDLE; }
     if (pickPipelineLayout_ != VK_NULL_HANDLE) { vkDestroyPipelineLayout(dev, pickPipelineLayout_, nullptr); pickPipelineLayout_ = VK_NULL_HANDLE; }
     if (boxPipeline_        != VK_NULL_HANDLE) { vkDestroyPipeline(dev, boxPipeline_, nullptr);             boxPipeline_        = VK_NULL_HANDLE; }
@@ -266,6 +272,152 @@ void PipelineManager::createPickPipeline(const VulkanContext& ctx, VkRenderPass 
         vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
         throw std::runtime_error("Failed to create pick graphics pipeline!");
     }
+
+    vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
+    vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
+}
+
+// ── Editor utility pipelines (selection outline + gizmo) ─────────────────────
+// mark   : redraws the selected object without writing color or depth,
+//          only stamping ref=1 into the stencil buffer.
+// outline: an inflated shell of the selected object along its normals
+//          (cull front), outputting a solid color only where stencil != 1,
+//          producing an outline around the object; depth is off so the
+//          outline stays visible even when occluded.
+// gizmo  : thin solid-color cubes as coordinate axes; depth off, always on top.
+void PipelineManager::createUtilityPipelines(const VulkanContext& ctx, VkRenderPass mainRenderPass,
+                                             const std::string& shaderDir, VkExtent2D extent)
+{
+    // The 148-byte push constants exceed the spec-guaranteed 128; check the device
+    // limit first and disable the utility pipelines when unsupported.
+    VkPhysicalDeviceProperties props{};
+    vkGetPhysicalDeviceProperties(ctx.getPhysicalDevice(), &props);
+    if (props.limits.maxPushConstantsSize < sizeof(UtilityPushConstants)) {
+        std::cerr << "[PipelineManager] utility pipelines disabled: maxPushConstantsSize="
+                  << props.limits.maxPushConstantsSize << " < " << sizeof(UtilityPushConstants) << "\n";
+        return;
+    }
+
+    auto vc = readFile(shaderDir + "utility_vert.spv");
+    auto fc = readFile(shaderDir + "solid_color.spv");
+    if (vc.empty() || fc.empty()) {
+        std::cerr << "[PipelineManager] utility shaders missing, outline/gizmo disabled\n";
+        return;
+    }
+    VkShaderModule vm = createShaderModule(ctx, vc);
+    VkShaderModule fm = createShaderModule(ctx, fc);
+    VkPipelineShaderStageCreateInfo stages[] = { makeStage(VK_SHADER_STAGE_VERTEX_BIT, vm),
+                                                  makeStage(VK_SHADER_STAGE_FRAGMENT_BIT, fm) };
+
+    VkPushConstantRange pcr{};
+    pcr.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pcr.size       = sizeof(UtilityPushConstants);
+
+    VkPipelineLayoutCreateInfo pli{};
+    pli.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &pcr;
+    if (vkCreatePipelineLayout(ctx.getDevice(), &pli, nullptr, &utilityPipelineLayout_) != VK_SUCCESS) {
+        std::cerr << "[PipelineManager] failed to create utility pipeline layout\n";
+        vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
+        vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);
+        return;
+    }
+
+    auto bindDesc = Vertex::getBindingDescription();
+    auto attrDesc = Vertex::getAttributeDescriptions();
+    VkPipelineVertexInputStateCreateInfo vin{};
+    vin.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vin.vertexBindingDescriptionCount   = 1; vin.pVertexBindingDescriptions = &bindDesc;
+    vin.vertexAttributeDescriptionCount = static_cast<uint32_t>(attrDesc.size());
+    vin.pVertexAttributeDescriptions    = attrDesc.data();
+
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkViewport vp{ 0.f, 0.f, (float)extent.width, (float)extent.height, 0.f, 1.f };
+    VkRect2D sc{ {0,0}, extent };
+    VkPipelineViewportStateCreateInfo vpState{};
+    vpState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vpState.viewportCount = 1; vpState.pViewports = &vp;
+    vpState.scissorCount  = 1; vpState.pScissors  = &sc;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    auto buildOne = [&](VkCullModeFlags cull, bool depthTest, bool depthWrite,
+                        VkCompareOp depthCmp, bool stencilTest,
+                        VkStencilOpState stencil, VkColorComponentFlags writeMask) -> VkPipeline {
+        VkPipelineRasterizationStateCreateInfo rs{};
+        rs.sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rs.polygonMode = VK_POLYGON_MODE_FILL; rs.lineWidth = 1.f;
+        rs.cullMode    = cull;
+        rs.frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+        VkPipelineDepthStencilStateCreateInfo ds{};
+        ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+        ds.depthTestEnable  = depthTest  ? VK_TRUE : VK_FALSE;
+        ds.depthWriteEnable = depthWrite ? VK_TRUE : VK_FALSE;
+        ds.depthCompareOp   = depthCmp;
+        ds.stencilTestEnable = stencilTest ? VK_TRUE : VK_FALSE;
+        ds.front = stencil; ds.back = stencil;
+
+        VkPipelineColorBlendAttachmentState cba{};
+        cba.blendEnable    = VK_FALSE;
+        cba.colorWriteMask = writeMask;
+        VkPipelineColorBlendStateCreateInfo cb{};
+        cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        cb.attachmentCount = 1; cb.pAttachments = &cba;
+
+        VkGraphicsPipelineCreateInfo gp{};
+        gp.sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        gp.stageCount          = 2; gp.pStages = stages;
+        gp.pVertexInputState   = &vin; gp.pInputAssemblyState = &ia;
+        gp.pViewportState      = &vpState; gp.pRasterizationState = &rs;
+        gp.pMultisampleState   = &ms; gp.pDepthStencilState = &ds;
+        gp.pColorBlendState    = &cb;
+        gp.layout              = utilityPipelineLayout_;
+        gp.renderPass          = mainRenderPass;
+        VkPipeline p = VK_NULL_HANDLE;
+        if (vkCreateGraphicsPipelines(ctx.getDevice(), VK_NULL_HANDLE, 1, &gp, nullptr, &p) != VK_SUCCESS)
+            return VK_NULL_HANDLE;
+        return p;
+    };
+
+    VkStencilOpState stencilMark{};
+    stencilMark.failOp      = VK_STENCIL_OP_KEEP;
+    stencilMark.passOp      = VK_STENCIL_OP_REPLACE;
+    stencilMark.depthFailOp = VK_STENCIL_OP_KEEP;
+    stencilMark.compareOp   = VK_COMPARE_OP_ALWAYS;
+    stencilMark.compareMask = 0xFF;
+    stencilMark.writeMask   = 0xFF;
+    stencilMark.reference   = 1;
+    markPipeline_ = buildOne(VK_CULL_MODE_BACK_BIT, true, false, VK_COMPARE_OP_LESS_OR_EQUAL,
+                             true, stencilMark, 0);
+
+    VkStencilOpState stencilOutline{};
+    stencilOutline.failOp      = VK_STENCIL_OP_KEEP;
+    stencilOutline.passOp      = VK_STENCIL_OP_KEEP;
+    stencilOutline.depthFailOp = VK_STENCIL_OP_KEEP;
+    stencilOutline.compareOp   = VK_COMPARE_OP_NOT_EQUAL;
+    stencilOutline.compareMask = 0xFF;
+    stencilOutline.writeMask   = 0x00;
+    stencilOutline.reference   = 1;
+    outlinePipeline_ = buildOne(VK_CULL_MODE_FRONT_BIT, false, false, VK_COMPARE_OP_ALWAYS,
+                                true, stencilOutline,
+                                VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                                VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
+
+    VkStencilOpState stencilOff{};
+    gizmoPipeline_ = buildOne(VK_CULL_MODE_NONE, false, false, VK_COMPARE_OP_ALWAYS,
+                              false, stencilOff,
+                              VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
+
+    if (markPipeline_ == VK_NULL_HANDLE || outlinePipeline_ == VK_NULL_HANDLE ||
+        gizmoPipeline_ == VK_NULL_HANDLE)
+        std::cerr << "[PipelineManager] some utility pipelines failed to create\n";
 
     vkDestroyShaderModule(ctx.getDevice(), vm, nullptr);
     vkDestroyShaderModule(ctx.getDevice(), fm, nullptr);

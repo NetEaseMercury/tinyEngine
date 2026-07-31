@@ -31,6 +31,14 @@ public:
     VkPipeline            getBoxPipeline()        const { return boxPipeline_; }
     VkPipeline            getPickPipeline()       const { return pickPipeline_; }
 
+    // Editor utility pipelines (selection outline / gizmo axes). VK_NULL_HANDLE
+    // when the device push-constant limit is too small or a shader is missing;
+    // callers should null-check and skip.
+    VkPipelineLayout      getUtilityPipelineLayout() const { return utilityPipelineLayout_; }
+    VkPipeline            getMarkPipeline()    const { return markPipeline_; }
+    VkPipeline            getOutlinePipeline() const { return outlinePipeline_; }
+    VkPipeline            getGizmoPipeline()   const { return gizmoPipeline_; }
+
     // Returns a pipeline matching (variant, vertSpvPath, fragSpvPath).
     // Empty paths -> returns the corresponding default pipeline.
     // Pipelines are cached internally and owned by PipelineManager.
@@ -56,6 +64,13 @@ private:
     VkPipeline            boxPipeline_{};
     VkPipeline            pickPipeline_{};
 
+    // Editor utility pipelines: mark (stencil stamp) / outline (inflated shell) /
+    // gizmo (axes).
+    VkPipelineLayout      utilityPipelineLayout_{};
+    VkPipeline            markPipeline_{};
+    VkPipeline            outlinePipeline_{};
+    VkPipeline            gizmoPipeline_{};
+
     // Dynamic pipeline cache keyed by "variant|vert|frag".
     std::unordered_map<std::string, VkPipeline> dynamicPipelines_;
     VkRenderPass cachedMainRenderPass_{};
@@ -70,6 +85,10 @@ private:
                            VkExtent2D extent);
     void createPickPipeline(const VulkanContext& ctx, VkRenderPass pickRenderPass,
                             const std::string& vertSpv, VkExtent2D extent);
+    // Create the utility layout + mark/outline/gizmo pipelines; any failure only
+    // warns and disables them without throwing.
+    void createUtilityPipelines(const VulkanContext& ctx, VkRenderPass mainRenderPass,
+                                const std::string& shaderDir, VkExtent2D extent);
 
     // Build VkPipeline only (layout reused). Returns VK_NULL_HANDLE on failure.
     VkPipeline buildMainPipeline(const VulkanContext& ctx, VkRenderPass renderPass,

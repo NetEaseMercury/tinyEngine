@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
-/** @brief ImGui Vulkan 后端的错误回调：非 0 打印并中止（教学：发布版可改为日志） */
+/** @brief Error callback for the ImGui Vulkan backend: prints and aborts on non-zero (for learning; a release build could log instead) */
 static void check_vk_result(VkResult err)
 {
     if (err == 0)
@@ -23,7 +23,7 @@ static void check_vk_result(VkResult err)
         abort();
 }
 
-/** @brief 返回 exe 所在目录，用于拼接 res/shaders 等相对路径 */
+/** @brief Return the exe directory for resolving relative paths such as res/shaders */
 static std::string applicationResourceRoot()
 {
 #ifdef _WIN32
@@ -36,7 +36,7 @@ static std::string applicationResourceRoot()
 	return std::filesystem::current_path().string();
 }
 
-/** @brief 在目录中按主文件名与若干 fallback 查找第一个存在的模型文件 */
+/** @brief Find the first existing model file in a directory by primary name plus fallbacks */
 static std::string resolveModelInDir(const std::string& dirWithSlash, const char* primaryFile)
 {
 	const char* fallbacks[] = { primaryFile, "01.obj", "no_material.obj" };
@@ -50,7 +50,7 @@ static std::string resolveModelInDir(const std::string& dirWithSlash, const char
 	return (dir / primaryFile).string();
 }
 
-/** @brief 在目录中按主文件名与教学用示例贴图列表查找纹理路径 */
+/** @brief Find a texture path in a directory by primary name plus the sample-texture list */
 static std::string resolveTextureInDir(const std::string& dirWithSlash, const char* primaryFile)
 {
 	const char* fallbacks[] = {
@@ -70,7 +70,7 @@ static std::string resolveTextureInDir(const std::string& dirWithSlash, const ch
 	return (dir / primaryFile).string();
 }
 
-/** @brief 见 IMGUIManager.hpp：用当前 VulkanRender 的队列与 RenderPass 初始化 ImGui_ImplVulkan */
+/** @brief See IMGUIManager.hpp: init ImGui_ImplVulkan with the current VulkanRender queue and RenderPass */
 void UIManager::initImGuiVulkanBackend()
 {
 	IM_ASSERT(vulkanRender != nullptr);
@@ -95,7 +95,7 @@ void UIManager::initImGuiVulkanBackend()
 	ImGui_ImplVulkan_Init(&init_info);
 }
 
-/** @brief 见 IMGUIManager.hpp：CreateContext、GLFW/Vulkan 后端、暗色主题 */
+/** @brief See IMGUIManager.hpp: CreateContext, GLFW/Vulkan backends, dark theme */
 void UIManager::initIMGUI()
 {
 	IM_ASSERT(vulkanRender != nullptr);
@@ -113,7 +113,7 @@ void UIManager::initIMGUI()
 	initImGuiVulkanBackend();
 }
 
-/** @brief 见 IMGUIManager.hpp：swapchain 重建后重绑 ImGui 与新的 RenderPass */
+/** @brief See IMGUIManager.hpp: rebind ImGui to the new RenderPass after swapchain recreation */
 void UIManager::reloadImGuiVulkanAfterSwapchainRecreate(Application* app)
 {
 	vulkanRender = app;
@@ -121,27 +121,27 @@ void UIManager::reloadImGuiVulkanAfterSwapchainRecreate(Application* app)
 	initImGuiVulkanBackend();
 }
 
-/** @brief 见 IMGUIManager.hpp：保存 Instance 与分配器供后续 Init */
+/** @brief See IMGUIManager.hpp: store the Instance and allocator for later Init */
 void UIManager::setVulkanInstance(const VkInstance& instance, VkAllocationCallbacks* allocator)
 {
 	Instance = instance;
 	Allocator = allocator;
 }
 
-/** @brief 见 IMGUIManager.hpp：保存 PhysicalDevice 与 Device */
+/** @brief See IMGUIManager.hpp: store PhysicalDevice and Device */
 void UIManager::setPhysicalDevice(const VkDevice& device, const VkPhysicalDevice& physicalDevice)
 {
 	PhysicalDevice = physicalDevice;
 	Device = device;
 }
 
-/** @brief 见 IMGUIManager.hpp：设置是否请求刷新 Vulkan（如改 shader 路径） */
+/** @brief See IMGUIManager.hpp: set whether a Vulkan refresh is requested (e.g. shader path changed) */
 void UIManager::setRefreshVulkanStatus(bool status)
 {
     refreshVulkanRender = status;
 }
 
-/** @brief 见 IMGUIManager.hpp：由 vert 路径派生 box 顶点 shader 路径 */
+/** @brief See IMGUIManager.hpp: derive the box vertex shader path from the vert path */
 void UIManager::syncBoxVertShaderPathFromVert()
 {
     boxVertShaderPath = vertexShaderPath;
@@ -151,7 +151,7 @@ void UIManager::syncBoxVertShaderPathFromVert()
         boxVertShaderPath.replace(pos, sizeof(kVert) - 1, "box_vert.spv");
 }
 
-/** @brief 见 IMGUIManager.hpp：由 frag 路径派生 box 片段 shader 路径 */
+/** @brief See IMGUIManager.hpp: derive the box fragment shader path from the frag path */
 void UIManager::syncBoxFragShaderPathFromFrag()
 {
     boxFragShaderPath = fragShaderPath;
@@ -161,7 +161,7 @@ void UIManager::syncBoxFragShaderPathFromFrag()
         boxFragShaderPath.replace(pos, sizeof(kFrag) - 1, "box.spv");
 }
 
-/** @brief 见 IMGUIManager.hpp：填充默认资源目录与当前 cyber_room 示例路径 */
+/** @brief See IMGUIManager.hpp: fill default resource directories and the current cyber_room sample paths */
 void UIManager::setModelDefaultPath()
 {
 	const std::string root = applicationResourceRoot();
@@ -185,13 +185,13 @@ void UIManager::setModelDefaultPath()
 	texturePath = texResolved;
 }
 
-/** @brief 见 IMGUIManager.hpp：返回是否需要 recreateSwapChain / 重载管线 */
+/** @brief See IMGUIManager.hpp: whether recreateSwapChain / pipeline reload is needed */
 bool UIManager::refreshVulkanShader()
 {
     return refreshVulkanRender;
 }
 
-/** @brief 见 IMGUIManager.hpp：每帧 NewFrame、操作面板、ImGuizmo 平移、ImGui::Render */
+/** @brief See IMGUIManager.hpp: per-frame NewFrame, operation panel, ImGuizmo translate, ImGui::Render */
 void UIManager::prepareFrame()
 {
 	if (window == nullptr) {
@@ -213,14 +213,14 @@ void UIManager::prepareFrame()
 
     ImGui::ColorEdit3("clear color", (float*)&clear_color); 
 
-    // 创建一个静态变量来存储选中项的索引
+    // Static variable holding the selected item index
     static int selectedIndex = 0;
 
-    // 定义下拉选项的内容
+    // Define the drop-down items
     const char* items[] = { "cyberRoom", "fantasyGameInn", "vikingRoom"};
     const int itemCount = IM_ARRAYSIZE(items);
 
-    // 创建下拉选项框
+    // Create the drop-down combo box
     ImGui::Combo("drop-down box", &selectedIndex, items, itemCount);
     if (selectedIndex != currentIndex) {
         switch (selectedIndex)
@@ -465,7 +465,7 @@ void UIManager::prepareFrame()
     ImGui::Render();
 }
 
-/** @brief 见 IMGUIManager.hpp：Shutdown ImGui Vulkan/GLFW 并 DestroyContext */
+/** @brief See IMGUIManager.hpp: Shutdown ImGui Vulkan/GLFW and DestroyContext */
 void UIManager::cleanUp()
 {
     ImGui_ImplVulkan_Shutdown();
@@ -473,7 +473,7 @@ void UIManager::cleanUp()
     ImGui::DestroyContext();
 }
 
-/** @brief 扫描 res/materials/ 下的 .ast 文件填充 astAssetFiles_ */
+/** @brief Scan .ast files under res/materials/ into astAssetFiles_ */
 void UIManager::scanMaterialAssets()
 {
     astAssetFiles_.clear();

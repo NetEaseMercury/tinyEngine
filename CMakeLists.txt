@@ -1,9 +1,9 @@
-﻿# CMakeList.txt: tinyEngine 的 CMake 项目，在此处包括源代码并定义
-# 项目特定的逻辑。
+# CMakeLists.txt: tinyEngine CMake project. Source files and project-specific
+# logic are defined here.
 #
 cmake_minimum_required (VERSION 3.8)
 
-# 如果支持，请为 MSVC 编译器启用热重载。
+# Enable Hot Reload for MSVC compilers when supported.
 if (POLICY CMP0141)
   cmake_policy(SET CMP0141 NEW)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
@@ -14,17 +14,34 @@ add_subdirectory(thirdParty/glm)
 # add Vulkan
 find_package(Vulkan REQUIRED)
 
-# imgui不是标准cmake工程，需要手动配置头文件
-file(GLOB_RECURSE IMGUI_SRCS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/thirdParty/imgui/*.cpp")
-
-# src 下源码：CONFIGURE_DEPENDS 在增删 .cpp 时会触发重新配置，避免链接缺文件
-file(GLOB SOURCE CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/*.cpp")
-
-add_executable(${PROJECT_NAME}
-    ${SOURCE}
-    ${IMGUI_SRCS}
-    thirdParty/ImGuizmo/ImGuizmo.cpp
+# In Editor mode the engine is built as a DLL, driven by the C# Editor
+# (editor/) through the C ABI.
+# Sources are listed explicitly (no GLOB): IMGUIManager.cpp (the ImGui/ImGuizmo
+# UI) has left the main path; it is kept on disk as a reference for a future
+# viewport-overlay port and is not part of the build.
+set(ENGINE_SOURCES
+    src/BufferManager.cpp
+    src/CommandManager.cpp
+    src/DescriptorManager.cpp
+    src/EngineRuntime.cpp
+    src/FramebufferManager.cpp
+    src/MaterialAssetLoader.cpp
+    src/MaterialManager.cpp
+    src/PickSystem.cpp
+    src/PipelineManager.cpp
+    src/Presenter.cpp
+    src/Renderer.cpp
+    src/RenderPassManager.cpp
+    src/SceneManager.cpp
+    src/SwapChain.cpp
+    src/TextureManager.cpp
+    src/TinyEngineDebug.cpp
+    src/VulkanContext.cpp
+    src/camera.cpp
+    src/tinyengine_api.cpp
 )
+
+add_library(${PROJECT_NAME} SHARED ${ENGINE_SOURCES})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
                 thirdParty/glfw/include
@@ -39,12 +56,24 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         )
 
 
-# 获取当前二进制目录到RUNTIME_OUTPUT_DIRECTORY这个变量处，也可以讲 ${CMAKE_BINARY_DIR}替换为"/path/to/your/directory"
+# The DLL and import library go to ${CMAKE_BINARY_DIR} (VS multi-config
+# generators append a <CONFIG> subdirectory by default; pinned per-config here
+# so tinyEngine.dll always lands in out/build/<preset>/, matching the res/ and
+# SPIR-V output directories for the C# Editor to copy directly).
 set_target_properties(tinyEngine PROPERTIES
-                      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-# 获取运行时Directory
+                      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+                      RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}
+                      RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}
+                      RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}
+                      RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR}
+                      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+                      ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib
+                      ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib
+                      ARCHIVE_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_BINARY_DIR}/lib
+                      ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_BINARY_DIR}/lib)
+# Get the runtime output directory
 get_target_property(TARGET_DIR tinyEngine RUNTIME_OUTPUT_DIRECTORY)
-# 添加预处理命令
+# Add preprocessor definitions
 add_definitions(-DGLEW_STATIC)
 
 # ── HLSL → SPIR-V via DXC (auto-download if missing) ────────────────────────
@@ -98,11 +127,13 @@ dxc_compile(box_vert.spv   vs_6_0 "${SHADER_SRC_DIR}/box_instanced.vert.hlsl")
 dxc_compile(box.spv        ps_6_0 "${SHADER_SRC_DIR}/box.frag.hlsl")
 dxc_compile(pick_vert.spv  vs_6_0 "${SHADER_SRC_DIR}/pick.vert.hlsl")
 dxc_compile(pick_frag.spv  ps_6_0 "${SHADER_SRC_DIR}/pick.frag.hlsl")
+dxc_compile(utility_vert.spv    vs_6_0 "${SHADER_SRC_DIR}/utility.vert.hlsl")
+dxc_compile(solid_color.spv     ps_6_0 "${SHADER_SRC_DIR}/solid_color.frag.hlsl")
 
 add_custom_target(shaders DEPENDS ${SHADER_SPV_FILES})
 add_dependencies(${PROJECT_NAME} shaders)
 
-# 拷贝资源（configure 时一次 + 每次链接后同步）
+# Copy resources (once at configure time + synced after every link)
 set(SOURCE_DIR "${CMAKE_SOURCE_DIR}/res")
 set(DESTINATION_DIR "${CMAKE_BINARY_DIR}")
 file(COPY ${SOURCE_DIR} DESTINATION ${DESTINATION_DIR})
@@ -128,10 +159,21 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
         GLFW_INCLUDE_VULKAN
         STB_IMAGE_IMPLEMENTATION
         TINYOBJLOADER_IMPLEMENTATION
+        TINYENGINE_EXPORTS
         )
+
+# Sources are UTF-8; force MSVC to read them as UTF-8 regardless of the system
+# code page.
+if (MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
+endif()
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET tinyEngine PROPERTY CXX_STANDARD 20)
 endif()
 
 
-# TODO: 如有需要，请添加测试并安装目标。
+# C# WPF Editor (dotnet build wrapper target; DEPENDS tinyEngine guarantees
+# DLL first, Editor second)
+add_subdirectory(editor)
+
+# TODO: Add tests and install targets if needed.

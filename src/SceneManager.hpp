@@ -31,6 +31,11 @@ public:
     void destroy(const VulkanContext& ctx);
 
     RenderEntityId addBox(const glm::vec3& position, const VulkanContext& ctx, const BufferManager& bufMgr);
+    // Same as addBox but uses a caller-allocated id (Editor mode: the id must be
+    // returned to the UI thread synchronously while the box is spawned later on
+    // the render thread). Keeps nextId_ ahead of the given id to avoid collisions.
+    RenderEntityId addBoxWithId(RenderEntityId id, const glm::vec3& position,
+                                const VulkanContext& ctx, const BufferManager& bufMgr);
     bool           removeBox(RenderEntityId id, const VulkanContext& ctx, const BufferManager& bufMgr);
     glm::vec3      getBoxPosition(RenderEntityId id) const;
     void           setBoxPosition(RenderEntityId id, const glm::vec3& pos,

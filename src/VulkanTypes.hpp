@@ -47,6 +47,18 @@ struct PushConstants {
     glm::mat4 normalMatrix; ///< transpose(inverse(mat3(model))) (offset  64, 64 bytes)
 };
 
+// Push constants shared by the editor utility pipelines (stencil mark / outline
+// inflated shell / gizmo). Layout matches UtilityPush in res/shaders/utility.vert.hlsl
+// and solid_color.frag.hlsl. Total 148 bytes exceeds the Vulkan-guaranteed 128,
+// so PipelineManager checks maxPushConstantsSize at creation and disables the
+// utility pipelines when unsupported (outline/gizmo simply stay hidden).
+struct UtilityPushConstants {
+    glm::mat4 model;    ///< Model-to-world matrix   (offset   0, 64 bytes)
+    glm::mat4 viewProj; ///< proj * view             (offset  64, 64 bytes)
+    glm::vec4 color;    ///< Solid color output      (offset 128, 16 bytes)
+    float     thickness;///< Normal extrusion width  (offset 144,  4 bytes)
+};
+
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;

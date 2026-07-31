@@ -26,7 +26,7 @@ struct MaterialParams {
 
 class MaterialManager {
 public:
-    // ── 生命周期 ──────────────────────────────────────────────────────
+    // ── Lifecycle ──────────────────────────────────────────────────────
     void init(const VulkanContext& ctx, const CommandManager& cmdMgr,
               const BufferManager& bufMgr, const FramebufferManager& fbMgr,
               const PipelineManager& pipeMgr, uint32_t imageCount,
@@ -38,7 +38,7 @@ public:
 
     void destroy(const VulkanContext& ctx);
 
-    // ── 材质创建 ──────────────────────────────────────────────────────
+    // ── Material creation ──────────────────────────────────────────────
     MaterialId createMeshMaterial(const std::string& name,
                                   const std::string& albedoPath,
                                   const std::string& normalPath,
@@ -92,12 +92,12 @@ public:
 
     void destroyMaterial(MaterialId id, const VulkanContext& ctx);
 
-    // ── 参数更新 ──────────────────────────────────────────────────────
+    // ── Parameter updates ──────────────────────────────────────────────
     void setParams(MaterialId id, const MaterialParams& params);
     const MaterialParams& getParams(MaterialId id) const;
     MaterialParams& getParamsMut(MaterialId id);
 
-    // ── 纹理热替换（Mesh 材质） ────────────────────────────────────────
+    // ── Texture hot-replacement (Mesh materials) ──────────────────────
     void setAlbedoPath(MaterialId id, const std::string& path,
                        const VulkanContext& ctx, const CommandManager& cmdMgr,
                        const BufferManager& bufMgr, const FramebufferManager& fbMgr,
@@ -108,14 +108,14 @@ public:
                        const BufferManager& bufMgr, const FramebufferManager& fbMgr,
                        const PipelineManager& pipeMgr);
 
-    // ── 每帧 UBO 更新 ─────────────────────────────────────────────────
-    // 将 view/proj 和材质颜色写入所有材质的 imageIndex 号 UBO
+    // ── Per-frame UBO update ──────────────────────────────────────────
+    // Write view/proj and material colors into each material's UBO slot imageIndex
     void updateAllUBOs(uint32_t imageIndex, const glm::mat4& view, const glm::mat4& proj);
 
-    // ── Descriptor Set 访问 ──────────────────────────────────────────
+    // ── Descriptor set access ─────────────────────────────────────────
     VkDescriptorSet getDescriptorSet(MaterialId id, uint32_t imageIndex) const;
 
-    // ── 查询 ─────────────────────────────────────────────────────────
+    // ── Queries ────────────────────────────────────────────────────────
     MaterialType        getMaterialType(MaterialId id) const;
     const std::string&  getMaterialName(MaterialId id) const;
     void                setMaterialName(MaterialId id, const std::string& name);
@@ -127,7 +127,7 @@ public:
     MaterialId          getDefaultBoxMaterialId()  const { return defaultBoxId_;  }
     const std::vector<MaterialId>& getAllMaterialIds() const { return allIds_; }
 
-    // ── Swapchain recreate 时重载默认 Mesh 材质纹理 ──────────────────
+    // ── Reload default Mesh material textures on swapchain recreation ──
     void reloadDefaultMeshTextures(const std::string& texturePath,
                                    const VulkanContext& ctx, const CommandManager& cmdMgr,
                                    const BufferManager& bufMgr, const FramebufferManager& fbMgr,

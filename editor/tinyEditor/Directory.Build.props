@@ -1,0 +1,12 @@
+<Project>
+  <!-- Imported before Microsoft.Common.props, so output paths take effect
+       early enough (setting BaseIntermediateOutputPath inside the .csproj is
+       too late and triggers MSB3539, with NuGet restore still writing to the
+       default obj/ next to the project).
+       All build outputs (bin + obj) go to <repo>/out/editor/ so the source
+       tree stays clean and everything build-related lives under out/. -->
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildProjectDirectory)\..\..\out\editor\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)\..\..\out\editor\obj\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

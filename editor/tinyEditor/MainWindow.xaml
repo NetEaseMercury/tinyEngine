@@ -1,0 +1,31 @@
+<Window x:Class="tinyEditor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:tinyEditor"
+        xmlns:panels="clr-namespace:tinyEditor.Panels"
+        Title="tinyEditor" Width="1440" Height="900">
+    <DockPanel>
+        <!-- Bottom: Content Browser + Log -->
+        <Grid DockPanel.Dock="Bottom" Height="200">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+            <panels:ContentBrowserPanel x:Name="contentBrowser"
+                                        BorderBrush="LightGray" BorderThickness="0,1,1,0"/>
+            <panels:LogPanel x:Name="logPanel" Grid.Column="1"
+                             BorderBrush="LightGray" BorderThickness="0,1,0,0"/>
+        </Grid>
+
+        <!-- Left: Hierarchy; right: Inspector -->
+        <panels:HierarchyPanel x:Name="hierarchy" DockPanel.Dock="Left" Width="250"
+                               BorderBrush="LightGray" BorderThickness="0,0,1,0"/>
+        <panels:InspectorPanel x:Name="inspector" DockPanel.Dock="Right" Width="300"
+                               BorderBrush="LightGray" BorderThickness="1,0,0,0"/>
+
+        <!-- Center: render viewport -->
+        <Border Background="Black">
+            <local:ViewportHost x:Name="viewport"/>
+        </Border>
+    </DockPanel>
+</Window>

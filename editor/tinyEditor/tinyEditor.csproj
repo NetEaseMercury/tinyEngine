@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>tinyEditor</RootNamespace>
+    <AssemblyName>tinyEditor</AssemblyName>
+    <!-- Output paths (out/editor/) are set in Directory.Build.props. -->
+  </PropertyGroup>
+
+  <!-- Native engine build: when the C# project is the entry point, build the
+       engine DLL first (including shader/res sync), then C#. Only the tinyEngine
+       target is built (not ALL), avoiding a mutual-trigger loop with the
+       tinyEditor wrapper target on the CMake side; it is a no-op incremental
+       check when the engine is already up to date.
+       When this project is built from the CMake entry point (full cmake build),
+       the engine has already been built via target dependencies, so this step
+       is a harmless no-op. -->
+  <Target Name="BuildEngineNative" BeforeTargets="BeforeBuild">
+    <Exec Command="cmake --build --preset x64-debug --target tinyEngine"
+          WorkingDirectory="$(MSBuildProjectDirectory)\..\.." />
+  </Target>
+
+  <!-- Engine runtime deployment: copy the C++ build outputs (tinyEngine.dll +
+       res/, including compiled SPIR-V) into the Editor output directory. -->
+  <Target Name="SyncEngineRuntime" AfterTargets="Build">
+    <PropertyGroup>
+      <!-- Overridable from outside: editor/CMakeLists.txt passes the engine output directory when building via CMake -->
+      <EngineOutDir Condition="'$(EngineOutDir)' == ''">$(MSBuildProjectDirectory)\..\..\out\build\x64-debug</EngineOutDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <EngineDll Include="$(EngineOutDir)\tinyEngine.dll" />
+      <EngineResFiles Include="$(EngineOutDir)\res\**\*" />
+    </ItemGroup>
+    <Warning Text="tinyEngine.dll not found at $(EngineOutDir) - build the C++ engine first (cmake build preset x64-debug)."
+             Condition="!Exists('$(EngineOutDir)\tinyEngine.dll')" />
+    <Copy SourceFiles="@(EngineDll)" DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" Condition="Exists('$(EngineOutDir)\tinyEngine.dll')" />
+    <Copy SourceFiles="@(EngineResFiles)" DestinationFolder="$(OutDir)res\%(RecursiveDir)"
+          SkipUnchangedFiles="true" Condition="Exists('$(EngineOutDir)\res')" />
+  </Target>
+
+</Project>

@@ -3,9 +3,9 @@
 #include <string>
 
 // Description of a material asset loaded from a .ast (JSON) file.
-// All path fields stored here are RELATIVE to the executable working dir
-// (i.e. already prefixed with "res/"), so they can be passed straight to
-// TextureManager / PipelineManager without any further rewriting.
+// All path fields stored here are already resolved against the runtime
+// resource root (see EnginePaths.hpp, te::paths::resRoot()), so they can be
+// passed straight to TextureManager / PipelineManager without further rewriting.
 struct MaterialAssetDesc {
     std::string    name;
     MaterialType   type = MaterialType::Mesh;
@@ -22,10 +22,6 @@ struct MaterialAssetDesc {
 
 class MaterialAssetLoader {
 public:
-    // The resource root: every relative path inside the .ast is resolved
-    // against this directory.
-    static constexpr const char* kResRoot = "res/";
-
     // Load a single material asset.
     //   astRelPath: path relative to res/, e.g. "materials/mainmodel.ast".
     //   out:        populated on success.

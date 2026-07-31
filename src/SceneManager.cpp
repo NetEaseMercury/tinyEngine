@@ -1,4 +1,5 @@
 #include "SceneManager.hpp"
+#include "EnginePaths.hpp"
 // Workaround: tinyobjloader's embedded fast_float library marks SIMD-using
 // helpers as `FASTFLOAT_CONSTEXPR20 = constexpr` whenever the host stdlib
 // reports __cpp_lib_constexpr_algorithms >= 201806L. MSVC 19.43+ in C++20
@@ -256,7 +257,7 @@ void SceneManager::loadModelFromGltf(const std::string& path, const glm::vec3& p
     namespace fs = std::filesystem;
     const fs::path gltfPath = fs::path(path);
     const fs::path gltfDir  = gltfPath.parent_path();
-    const fs::path resRoot  = fs::absolute(fs::path("res"));
+    const fs::path resRoot  = fs::absolute(fs::path(te::paths::resRoot()));
     const std::string baseName = gltfPath.stem().string();
 
     modelVertices_.clear();
@@ -374,23 +375,24 @@ void SceneManager::createCubeTemplate(const BufferManager& bufMgr)
 
     const float s = 0.5f;
     const glm::vec3 c = { 1.0f, 1.0f, 1.0f };
-
-    auto addFace = [&](glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3) {
+    
+    // n: face normal (the outline inflated shell needs real normals)
+    auto addFace = [&](glm::vec3 v0, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3, glm::vec3 n) {
         uint32_t base = static_cast<uint32_t>(cubeTemplateVertices_.size());
-        cubeTemplateVertices_.push_back({ v0, c, {0.f, 0.f} });
-        cubeTemplateVertices_.push_back({ v1, c, {1.f, 0.f} });
-        cubeTemplateVertices_.push_back({ v2, c, {1.f, 1.f} });
-        cubeTemplateVertices_.push_back({ v3, c, {0.f, 1.f} });
+        cubeTemplateVertices_.push_back({ v0, c, {0.f, 0.f}, n });
+        cubeTemplateVertices_.push_back({ v1, c, {1.f, 0.f}, n });
+        cubeTemplateVertices_.push_back({ v2, c, {1.f, 1.f}, n });
+        cubeTemplateVertices_.push_back({ v3, c, {0.f, 1.f}, n });
         cubeTemplateIndices_.insert(cubeTemplateIndices_.end(),
             { base+0, base+1, base+2, base+2, base+3, base+0 });
     };
-
-    addFace({-s,-s,+s},{+s,-s,+s},{+s,+s,+s},{-s,+s,+s});
-    addFace({+s,-s,-s},{-s,-s,-s},{-s,+s,-s},{+s,+s,-s});
-    addFace({-s,-s,-s},{-s,-s,+s},{-s,+s,+s},{-s,+s,-s});
-    addFace({+s,-s,+s},{+s,-s,-s},{+s,+s,-s},{+s,+s,+s});
-    addFace({-s,+s,+s},{+s,+s,+s},{+s,+s,-s},{-s,+s,-s});
-    addFace({-s,-s,-s},{+s,-s,-s},{+s,-s,+s},{-s,-s,+s});
+    
+    addFace({-s,-s,+s},{+s,-s,+s},{+s,+s,+s},{-s,+s,+s}, { 0.f, 0.f, 1.f});
+    addFace({+s,-s,-s},{-s,-s,-s},{-s,+s,-s},{+s,+s,-s}, { 0.f, 0.f,-1.f});
+    addFace({-s,-s,-s},{-s,-s,+s},{-s,+s,+s},{-s,+s,-s}, {-1.f, 0.f, 0.f});
+    addFace({+s,-s,+s},{+s,-s,-s},{+s,+s,-s},{+s,+s,+s}, { 1.f, 0.f, 0.f});
+    addFace({-s,+s,+s},{+s,+s,+s},{+s,+s,-s},{-s,+s,-s}, { 0.f, 1.f, 0.f});
+    addFace({-s,+s,-s},{+s,+s,-s},{+s,+s,+s},{-s,+s,+s}, { 0.f,-1.f, 0.f});
 
     bufMgr.createVertexBuffer(cubeTemplateVertices_, cubeVertexBuffer_, cubeVertexMemory_);
     bufMgr.createIndexBuffer(cubeTemplateIndices_, cubeIndexBuffer_, cubeIndexMemory_);
@@ -416,6 +418,16 @@ RenderEntityId SceneManager::addBox(const glm::vec3& position,
                                      const VulkanContext& ctx, const BufferManager& bufMgr)
 {
     RenderEntityId id = nextId_++;
+    boxes_[id] = position;
+    rebuildInstanceBuffer(ctx, bufMgr);
+    return id;
+}
+
+RenderEntityId SceneManager::addBoxWithId(RenderEntityId id, const glm::vec3& position,
+                                          const VulkanContext& ctx, const BufferManager& bufMgr)
+{
+    if (id == 0) id = nextId_++;
+    if (id >= nextId_) nextId_ = id + 1;
     boxes_[id] = position;
     rebuildInstanceBuffer(ctx, bufMgr);
     return id;

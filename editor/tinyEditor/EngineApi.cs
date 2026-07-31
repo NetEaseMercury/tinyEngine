@@ -1,0 +1,166 @@
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+namespace tinyEditor;
+
+/// <summary>
+/// P/Invoke wrapper for the tinyEngine C ABI. Mirrors src/tinyengine_api.h.
+/// All write operations take effect asynchronously (engine command queue);
+/// queries go through snapshot copies.
+/// </summary>
+public static class EngineApi
+{
+    private const string DllName = "tinyEngine.dll";
+
+    public const int MaxMaterials = 64;
+    public const int MaxBoxes = 256;
+
+    public const int SelectNone = 0;
+    public const int SelectModel = 1;
+    public const int SelectBox = 2;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct TeMaterialInfo
+    {
+        public uint id;
+        public int type;        // 0 = Mesh, 1 = Box
+        public int deletable;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string name;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public float[] baseColor;
+        public float roughness;
+        public float metallic;
+        public float emissiveIntensity;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public float[] emissiveColor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TeBoxInfo
+    {
+        public ulong id;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] public float[] position;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct TeSceneSnapshot
+    {
+        public ulong pickedBoxEntityId;
+        public uint selectedMaterialId;
+        public int mainModelSelected;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] public float[] modelPosition;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public float[] modelRotation;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] public float[] modelScale;
+        public int materialCount;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = MaxMaterials)] public TeMaterialInfo[] materials;
+        public int boxCount;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = MaxBoxes)] public TeBoxInfo[] boxes;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public float[] clearColor;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)] public float[] cameraPosition;
+        public float cameraSpeed;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 512)] public string modelName;
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate void TeLogCallback(int level, IntPtr msg);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_init([MarshalAs(UnmanagedType.LPUTF8Str)] string resRoot);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void te_shutdown();
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_viewport_attach(IntPtr hwndParent, int w, int h);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_viewport_resize(int w, int h);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_load_model([MarshalAs(UnmanagedType.LPUTF8Str)] string relPath);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_load_material_ast([MarshalAs(UnmanagedType.LPUTF8Str)] string relPath);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern ulong te_add_box(float x, float y, float z);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_remove_box(ulong id);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_material_set_params(uint id,
+        [In] float[] baseColor4, float roughness, float metallic,
+        float emissiveIntensity, [In] float[] emissiveColor4);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_set_clear_color(float r, float g, float b, float a);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_select(int what, ulong boxId);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_assign_material(int what, ulong boxId, uint materialId);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_set_model_position(float x, float y, float z);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void te_set_box_position(ulong id, float x, float y, float z);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_get_snapshot(ref TeSceneSnapshot snapshot);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void te_set_log_callback(TeLogCallback cb);
+
+    // ── High-level wrappers ──────────────────────────────────────────────────────
+
+    internal static bool IsInitialized { get; private set; }
+
+    /// <summary>Engine log event (the callback fires on the render thread; subscribers must marshal to the UI thread themselves).</summary>
+    internal static event Action<int, string>? LogReceived;
+
+    private static TeLogCallback? logCbKeepAlive_;
+
+    /// <summary>The res/ directory (under the Editor output directory, synced by the csproj after build).</summary>
+    internal static string ResRoot => Path.Combine(AppContext.BaseDirectory, "res");
+
+    /// <summary>Idempotently start the engine (synchronously waits for Vulkan init). Returns true on success.</summary>
+    internal static bool EnsureInitialized()
+    {
+        if (IsInitialized) return true;
+
+        logCbKeepAlive_ = (level, msgPtr) =>
+        {
+            var msg = Marshal.PtrToStringUTF8(msgPtr) ?? string.Empty;
+            try { LogReceived?.Invoke(level, msg); } catch { /* log callbacks must never affect the engine */ }
+        };
+        te_set_log_callback(logCbKeepAlive_);
+
+        int rc;
+        try {
+            rc = te_init(ResRoot);
+        } catch (Exception ex) {
+            LogReceived?.Invoke(2, "te_init P/Invoke failed: " + ex.Message);
+            return false;
+        }
+        IsInitialized = rc == 0;
+        return IsInitialized;
+    }
+
+    /// <summary>Pull the latest scene snapshot; returns false when the engine is not ready.</summary>
+    internal static bool TryGetSnapshot(out TeSceneSnapshot snapshot)
+    {
+        snapshot = new TeSceneSnapshot();
+        if (!IsInitialized) return false;
+        return te_get_snapshot(ref snapshot) == 0;
+    }
+
+    internal static void Shutdown()
+    {
+        if (!IsInitialized) return;
+        te_shutdown();
+        IsInitialized = false;
+    }
+}

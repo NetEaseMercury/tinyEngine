@@ -35,8 +35,11 @@ VkFormat RenderPassManager::findSupportedFormat(const VulkanContext& ctx,
 
 VkFormat RenderPassManager::findDepthFormat(const VulkanContext& ctx) const
 {
+    // Prefer formats with a stencil bit (the selection outline pass relies on the
+    // stencil buffer); fall back to plain D32 in the worst case (outline simply
+    // stops working, everything else is unaffected).
     return findSupportedFormat(ctx,
-        { VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT },
+        { VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT },
         VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 }
 
@@ -59,7 +62,9 @@ void RenderPassManager::createMainRenderPass(const VulkanContext& ctx, VkFormat 
     depth.samples        = VK_SAMPLE_COUNT_1_BIT;
     depth.loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth.storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depth.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    // Clear stencil to 0 each frame: the mark/outline stages of the selection
+    // outline depend on a clean stencil buffer.
+    depth.stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_CLEAR;
     depth.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     depth.initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED;
     depth.finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;

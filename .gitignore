@@ -363,3 +363,7 @@ FodyWeavers.xsd
 
 # DXC shader compiler (auto-downloaded by CMake)
 thirdParty/dxc/
+
+# C# solution directory (sln regenerated on demand by build_scripts/build_all.bat;
+# the build targets tinyEditor.csproj directly and does not need the .sln)
+build/
