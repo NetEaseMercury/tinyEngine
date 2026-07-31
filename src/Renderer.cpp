@@ -302,6 +302,11 @@ void Renderer::recreateSwapChain(EngineRuntime& runtime)
     int w = 0, h = 0;
     glfwGetFramebufferSize(window_, &w, &h);
     while (w == 0 || h == 0) {
+        // The host may already be closing the window (e.g. the WPF parent is
+        // gone): give up recreating instead of waiting forever. Without this
+        // check the render thread blocks here permanently and stop()'s join()
+        // deadlocks, leaving a zombie process after the window closes.
+        if (glfwWindowShouldClose(window_)) return;
         glfwGetFramebufferSize(window_, &w, &h);
         glfwWaitEvents();
     }

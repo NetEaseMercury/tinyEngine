@@ -121,8 +121,21 @@ bool Presenter::start(const std::string& resRoot, std::string* outError)
 void Presenter::stop()
 {
     running_ = false;
-    if (window_) glfwSetWindowShouldClose(window_, GLFW_TRUE);
+    if (window_) {
+        glfwSetWindowShouldClose(window_, GLFW_TRUE);
+        // Wake glfwWaitEvents so the render thread observes the close request
+        // immediately (both GLFW calls are documented as safe from any thread).
+        glfwPostEmptyEvent();
+    }
     if (renderThread_.joinable()) renderThread_.join();
+
+    // Window teardown happens here, after the join, so stop() never touches a
+    // dangling GLFWwindow while the render thread is destroying it.
+    if (window_) {
+        glfwDestroyWindow(window_);
+        window_ = nullptr;
+        glfwTerminate();
+    }
 }
 
 void Presenter::log(int level, const std::string& msg) const
@@ -193,8 +206,7 @@ void Presenter::threadMain()
 
     runtime_.destroy(renderer_);
     renderer_.destroy();
-    if (window_) { glfwDestroyWindow(window_); window_ = nullptr; }
-    glfwTerminate();
+    // The GLFW window is destroyed by stop() after this thread has been joined.
     log(0, "tinyEngine shutdown complete.");
 }
 

@@ -50,10 +50,15 @@ public partial class MainWindow : Window
             contentBrowser.Refresh();
             snapshotTimer_.Start();
         };
-        Closed += (_, _) =>
+        Closing += (_, _) =>
         {
             snapshotTimer_.Stop();
             EngineApi.LogReceived -= OnEngineLog;
+            // Shut the engine down while the window tree is still intact. Doing
+            // this in Closed would race WPF tearing down the hosted viewport
+            // window: the render thread could enter swapchain recreation against
+            // a dead surface and block forever, deadlocking the join in
+            // te_shutdown and leaving a zombie process behind.
             EngineApi.Shutdown();
         };
     }
