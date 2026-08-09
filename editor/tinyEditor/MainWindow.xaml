@@ -5,6 +5,15 @@
         xmlns:panels="clr-namespace:tinyEditor.Panels"
         Title="tinyEditor" Width="1440" Height="900">
     <DockPanel>
+        <!-- Top: menu / toolbar -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_Tools">
+                <MenuItem Header="Debug _Console" Click="OnOpenConsole"/>
+                <Separator/>
+                <MenuItem Header="Capture Frame (_RenderDoc)" Click="OnCaptureFrame"/>
+            </MenuItem>
+        </Menu>
+
         <!-- Bottom: Content Browser + Log -->
         <Grid DockPanel.Dock="Bottom" Height="200">
             <Grid.ColumnDefinitions>

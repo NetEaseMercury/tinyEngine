@@ -23,6 +23,7 @@ set(ENGINE_SOURCES
     src/BufferManager.cpp
     src/CommandManager.cpp
     src/DescriptorManager.cpp
+    src/DebugCommand.cpp
     src/EngineRuntime.cpp
     src/FramebufferManager.cpp
     src/MaterialAssetLoader.cpp
@@ -105,6 +106,44 @@ endif()
 set(DXC_EXECUTABLE "${DXC_EXE}")
 message(STATUS "DXC: ${DXC_EXECUTABLE}")
 
+# ── RenderDoc in-app capture DLL (auto-download if missing) ─────────────────
+# The engine LoadLibrary's renderdoc.dll at startup for programmatic frame
+# capture. Only the DLL is needed (not the full RenderDoc install); it is not
+# committed to the repo (see .gitignore) and is fetched here on first configure.
+set(RENDERDOC_VERSION "1.45")
+set(RENDERDOC_DIR "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc")
+set(RENDERDOC_DLL "${RENDERDOC_DIR}/renderdoc.dll")
+set(RENDERDOC_URL "https://renderdoc.org/stable/${RENDERDOC_VERSION}/RenderDoc_${RENDERDOC_VERSION}_64.zip")
+
+if(WIN32 AND NOT EXISTS "${RENDERDOC_DLL}")
+    set(RENDERDOC_ZIP "${RENDERDOC_DIR}/renderdoc.zip")
+    set(RENDERDOC_EXTRACT "${RENDERDOC_DIR}/_extract")
+    message(STATUS "Downloading RenderDoc ${RENDERDOC_VERSION} from ${RENDERDOC_URL} ...")
+    file(DOWNLOAD "${RENDERDOC_URL}" "${RENDERDOC_ZIP}" STATUS rdocStatus TIMEOUT 180)
+    list(GET rdocStatus 0 rdocCode)
+    if(NOT rdocCode EQUAL 0)
+        list(GET rdocStatus 1 rdocErr)
+        message(WARNING "RenderDoc download failed: ${rdocErr}. In-app capture will be unavailable.")
+    else()
+        file(MAKE_DIRECTORY "${RENDERDOC_EXTRACT}")
+        execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${RENDERDOC_ZIP}"
+            WORKING_DIRECTORY "${RENDERDOC_EXTRACT}")
+        # The portable zip contains RenderDoc_<ver>_64/renderdoc.dll; locate it.
+        file(GLOB_RECURSE RENDERDOC_FOUND "${RENDERDOC_EXTRACT}/renderdoc.dll")
+        if(RENDERDOC_FOUND)
+            list(GET RENDERDOC_FOUND 0 rdocSrc)
+            file(COPY "${rdocSrc}" DESTINATION "${RENDERDOC_DIR}")
+        else()
+            message(WARNING "renderdoc.dll not found inside the downloaded archive.")
+        endif()
+        file(REMOVE "${RENDERDOC_ZIP}")
+        file(REMOVE_RECURSE "${RENDERDOC_EXTRACT}")
+    endif()
+endif()
+if(EXISTS "${RENDERDOC_DLL}")
+    message(STATUS "RenderDoc DLL: ${RENDERDOC_DLL}")
+endif()
+
 set(SHADER_SRC_DIR "${CMAKE_SOURCE_DIR}/res/shaders")
 set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/res/shaders")
 file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
@@ -145,6 +184,17 @@ add_custom_command(TARGET tinyEngine POST_BUILD
         "$<TARGET_FILE_DIR:tinyEngine>/res/models/no_material.obj"
     COMMENT "Sync res/ next to tinyEngine executable"
 )
+
+# Copy the bundled RenderDoc DLL next to tinyEngine.dll so the engine can
+# LoadLibrary it for in-app frame capture (independent of launching from the
+# RenderDoc UI). Skipped silently if the DLL is not present in thirdParty.
+if(EXISTS "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc/renderdoc.dll")
+    add_custom_command(TARGET tinyEngine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc/renderdoc.dll"
+            "$<TARGET_FILE_DIR:tinyEngine>/renderdoc.dll"
+        COMMENT "Copy renderdoc.dll next to tinyEngine.dll")
+endif()
 
 target_link_libraries(${PROJECT_NAME}
         Vulkan::Vulkan

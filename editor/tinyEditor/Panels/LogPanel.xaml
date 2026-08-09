@@ -10,8 +10,15 @@
         <DockPanel Margin="2,2,2,6">
             <TextBlock Text="Log" FontWeight="Bold" FontSize="14" VerticalAlignment="Center"/>
             <Button Content="Clear" Click="OnClear" DockPanel.Dock="Right" Padding="12,2"/>
+            <Button Content="Copy All" Click="OnCopyAll" DockPanel.Dock="Right" Padding="12,2" Margin="0,0,6,0"/>
         </DockPanel>
 
-        <ListBox x:Name="logList" Grid.Row="1" Margin="2" FontFamily="Consolas" FontSize="12"/>
+        <TextBox x:Name="logText" Grid.Row="1" Margin="2"
+                 FontFamily="Consolas" FontSize="12"
+                 IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                 TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto"
+                 AcceptsReturn="True"/>
     </Grid>
 </UserControl>

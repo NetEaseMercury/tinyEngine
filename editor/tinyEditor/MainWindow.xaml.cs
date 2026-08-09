@@ -64,4 +64,26 @@ public partial class MainWindow : Window
     }
 
     private void OnEngineLog(int level, string msg) => logPanel.Append(level, msg);
+
+    private ConsoleWindow? console_;
+
+    private void OnOpenConsole(object sender, RoutedEventArgs e)
+    {
+        if (console_ is { IsLoaded: true })
+        {
+            console_.Activate();
+            return;
+        }
+        console_ = new ConsoleWindow { Owner = this };
+        console_.Closed += (_, _) => console_ = null;
+        console_.Show();
+    }
+
+    private void OnCaptureFrame(object sender, RoutedEventArgs e)
+    {
+        bool ok = EngineApi.CaptureFrame();
+        logPanel.Append(ok ? 0 : 1,
+            ok ? "RenderDoc: capturing next frame."
+               : "RenderDoc not available (renderdoc.dll not loaded).");
+    }
 }

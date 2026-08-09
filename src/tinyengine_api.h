@@ -81,6 +81,54 @@ typedef struct TeSceneSnapshot {
 
 typedef void (TE_CALL *TeLogCallback)(int32_t level, const char* msg);
 
+/* ── Debug command reflection ──────────────────────────────────────────────
+ * Debug commands are registered on the engine side; their metadata is exported
+ * here so the Editor can reflect them into UI. Parameter type tags mirror the
+ * C++ DebugParamType enum. */
+#define TE_DBG_PARAM_INT     0
+#define TE_DBG_PARAM_FLOAT   1
+#define TE_DBG_PARAM_BOOL    2
+#define TE_DBG_PARAM_STRING  3
+#define TE_DBG_PARAM_ENUM    4
+#define TE_DBG_PARAM_VEC3    5
+#define TE_DBG_PARAM_UINT64  6
+#define TE_DBG_PARAM_COLOR   7
+
+#define TE_DBG_MAX_PARAMS      8
+#define TE_DBG_NAME_LEN        128
+#define TE_DBG_HELP_LEN        512
+#define TE_DBG_ENUM_LEN        256
+#define TE_DBG_STRING_LEN      256
+
+typedef struct TeDebugParamInfo {
+    int32_t type;                    /* TE_DBG_PARAM_* */
+    char    name[TE_DBG_NAME_LEN];
+    char    enumValues[TE_DBG_ENUM_LEN]; /* '|'-separated labels when type==ENUM */
+    double  minVal;                  /* UI range hint (maxVal<=minVal => none) */
+    double  maxVal;
+    double  defNum;                  /* default for Int/Float/Enum/Bool(0/1)/UInt64 */
+    float   defVec[4];               /* default for Vec3(xyz)/Color(rgba) */
+    char    defStr[TE_DBG_STRING_LEN];
+} TeDebugParamInfo;
+
+typedef struct TeDebugCommandInfo {
+    char             name[TE_DBG_NAME_LEN];
+    char             help[TE_DBG_HELP_LEN];
+    int32_t          paramCount;
+    TeDebugParamInfo params[TE_DBG_MAX_PARAMS];
+} TeDebugCommandInfo;
+
+/* One argument value passed to te_debug_invoke; only the field matching 'type'
+ * is read. */
+typedef struct TeDebugArg {
+    int32_t type;      /* TE_DBG_PARAM_* */
+    int64_t i;         /* Int / Enum / UInt64 */
+    double  f;         /* Float */
+    int32_t b;         /* Bool (0/1) */
+    float   v[4];      /* Vec3 (xyz) / Color (rgba) */
+    char    s[TE_DBG_STRING_LEN]; /* String */
+} TeDebugArg;
+
 /* ── Lifecycle ─────────────────────────────────────────────────────────────
  * te_init: start the engine render thread and complete Vulkan initialization
  * (synchronously waited; returns 0 on success).
@@ -123,6 +171,20 @@ TE_API int32_t te_get_snapshot(TeSceneSnapshot* out);
  * Register the log callback (level: 0=info, 1=warn, 2=error). May be called
  * before te_init. */
 TE_API void te_set_log_callback(TeLogCallback cb);
+
+/* ── Debug commands ─────────────────────────────────────────────────────────
+ * te_debug_command_count / te_debug_command_info: enumerate registered debug
+ * commands and their parameter metadata for UI reflection.
+ * te_debug_invoke: queue a command for execution on the render thread; args
+ * must have at least the command's parameter count. Returns 0 if the command
+ * was queued (unknown-name errors surface via the log callback). */
+TE_API int32_t te_debug_command_count(void);
+TE_API int32_t te_debug_command_info(int32_t index, TeDebugCommandInfo* out);
+TE_API int32_t te_debug_invoke(const char* name, const TeDebugArg* args, int32_t argCount);
+
+/* Trigger a RenderDoc capture of the next rendered frame. Returns 0 if the
+ * request was accepted (RenderDoc available), -1 otherwise. */
+TE_API int32_t te_debug_capture_frame(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

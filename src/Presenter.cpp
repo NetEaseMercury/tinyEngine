@@ -213,6 +213,7 @@ void Presenter::threadMain()
 void Presenter::threadInit()
 {
     tinyengine::debug::initRenderDoc();
+    log(0, tinyengine::debug::getRenderDocStatus());
 
     if (!glfwInit())
         throw std::runtime_error("glfwInit failed");
@@ -244,6 +245,8 @@ void Presenter::threadInit()
 
     runtime_.initScene(renderer_, modelPath_, texturePath_);
     renderer_.initFrameResources();
+
+    registerDebugCommands();
 }
 
 // ─── Command queue ────────────────────────────────────────────────────────────
@@ -326,6 +329,11 @@ void Presenter::applyCommand(const Command& cmd)
             runtime_.mainModelTransform.position = glm::vec3(c.x, c.y, c.z);
         } else if constexpr (std::is_same_v<T, CmdBoxPos>) {
             runtime_.setBoxPosition(renderer_, c.id, glm::vec3(c.x, c.y, c.z));
+        } else if constexpr (std::is_same_v<T, CmdDebugInvoke>) {
+            const std::string result =
+                tinyengine::debugcmd::DebugCommandRegistry::instance().invoke(c.name, c.args);
+            if (!result.empty())
+                log(result.rfind("error", 0) == 0 ? 2 : 0, c.name + ": " + result);
         }
     }, cmd);
 }
@@ -404,6 +412,118 @@ void Presenter::cmdSetBoxPosition(uint64_t id, float x, float y, float z)
 {
     enqueue(CmdBoxPos{ id, x, y, z });
 }
+
+void Presenter::cmdDebugInvoke(const std::string& name, std::vector<DebugArg> args)
+{
+    enqueue(CmdDebugInvoke{ name, std::move(args) });
+}
+
+// Populate the debug command registry. Commands run on the render thread (via
+// the command queue) and touch runtime_/renderer_ directly, so it is safe to
+// capture 'this' here. Registration itself happens once at init time.
+void Presenter::registerDebugCommands()
+{
+    using namespace tinyengine::debugcmd;
+
+    auto floatParam = [](const char* nm, double def, double lo, double hi) {
+        DebugParamMeta p; p.type = DebugParamType::Float; p.name = nm;
+        p.minVal = lo; p.maxVal = hi; p.defVal.type = DebugParamType::Float; p.defVal.f = def;
+        return p;
+    };
+    auto colorParam = [](const char* nm, float r, float g, float b, float a) {
+        DebugParamMeta p; p.type = DebugParamType::Color; p.name = nm;
+        p.defVal.type = DebugParamType::Color;
+        p.defVal.v[0] = r; p.defVal.v[1] = g; p.defVal.v[2] = b; p.defVal.v[3] = a;
+        return p;
+    };
+    auto vec3Param = [](const char* nm, float x, float y, float z) {
+        DebugParamMeta p; p.type = DebugParamType::Vec3; p.name = nm;
+        p.defVal.type = DebugParamType::Vec3;
+        p.defVal.v[0] = x; p.defVal.v[1] = y; p.defVal.v[2] = z;
+        return p;
+    };
+    auto stringParam = [](const char* nm, const char* def) {
+        DebugParamMeta p; p.type = DebugParamType::String; p.name = nm;
+        p.defVal.type = DebugParamType::String; p.defVal.s = def ? def : "";
+        return p;
+    };
+    auto u64Param = [](const char* nm) {
+        DebugParamMeta p; p.type = DebugParamType::UInt64; p.name = nm; return p;
+    };
+
+    // render.set_clear_color(rgba)
+    registerCommand<DebugColor>(
+        "render.set_clear_color", "Set the viewport clear color (rgba).",
+        { colorParam("color", 0.02f, 0.02f, 0.03f, 1.0f) },
+        std::function<void(DebugColor)>([this](DebugColor c) {
+            runtime_.clearColor[0] = c.r; runtime_.clearColor[1] = c.g;
+            runtime_.clearColor[2] = c.b; runtime_.clearColor[3] = c.a;
+        }));
+
+    // scene.add_box(pos)
+    registerCommand<DebugVec3>(
+        "scene.add_box", "Spawn a box at the given world position.",
+        { vec3Param("position", 0.0f, 0.0f, 0.0f) },
+        std::function<void(DebugVec3)>([this](DebugVec3 p) {
+            const uint64_t id = nextBoxId_++;
+            runtime_.addBox(renderer_, id, glm::vec3(p.x, p.y, p.z));
+            log(0, "added box id=" + std::to_string(id));
+        }));
+
+    // scene.remove_box(id)
+    registerCommand<uint64_t>(
+        "scene.remove_box", "Remove the box with the given entity id.",
+        { u64Param("boxId") },
+        std::function<void(uint64_t)>([this](uint64_t id) {
+            runtime_.removeBox(renderer_, id);
+        }));
+
+    // scene.set_model_position(pos)
+    registerCommand<DebugVec3>(
+        "scene.set_model_position", "Move the main model to a world position.",
+        { vec3Param("position", 0.0f, 0.0f, 0.0f) },
+        std::function<void(DebugVec3)>([this](DebugVec3 p) {
+            runtime_.mainModelTransform.position = glm::vec3(p.x, p.y, p.z);
+        }));
+
+    // scene.set_box_position(id, pos)
+    registerCommand<uint64_t, DebugVec3>(
+        "scene.set_box_position", "Move a box (by id) to a world position.",
+        { u64Param("boxId"), vec3Param("position", 0.0f, 0.0f, 0.0f) },
+        std::function<void(uint64_t, DebugVec3)>([this](uint64_t id, DebugVec3 p) {
+            runtime_.setBoxPosition(renderer_, id, glm::vec3(p.x, p.y, p.z));
+        }));
+
+    // asset.load_model(relPath)
+    registerCommand<std::string>(
+        "asset.load_model", "Load a model by res-relative path (e.g. models/foo.obj).",
+        { stringParam("relPath", "models/viking_room.obj") },
+        std::function<void(std::string)>([this](std::string path) {
+            if (runtime_.loadModelFromRes(renderer_, path)) log(0, "model loaded: " + path);
+            else                                            log(2, "model load failed: " + path);
+        }));
+
+    // asset.load_material(relPath)
+    registerCommand<std::string>(
+        "asset.load_material", "Apply a material .ast by res-relative path.",
+        { stringParam("relPath", "materials/viking_room.ast") },
+        std::function<void(std::string)>([this](std::string path) {
+            if (runtime_.loadAndApplyMaterialAsset(renderer_, path)) log(0, "material applied: " + path);
+            else                                                     log(2, "material failed: " + path);
+        }));
+
+    // camera.set_speed(speed)
+    registerCommand<float>(
+        "camera.set_speed", "Set the free-fly camera movement speed.",
+        { floatParam("speed", 3.0f, 0.1f, 50.0f) },
+        std::function<void(float)>([this](float s) {
+            runtime_.camera().SetSpeed(s);
+        }));
+
+    log(0, "debug commands registered: " +
+           std::to_string(DebugCommandRegistry::instance().count()));
+}
+
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 

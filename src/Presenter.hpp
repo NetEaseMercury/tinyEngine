@@ -3,6 +3,7 @@
 #include "EngineRuntime.hpp"
 #include "Renderer.hpp"
 #include "tinyengine_api.h"
+#include "DebugCommand.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -60,6 +61,11 @@ public:
     void     cmdSetModelPosition(float x, float y, float z);
     void     cmdSetBoxPosition(uint64_t id, float x, float y, float z);
 
+    // ── Debug commands ──────────────────────────────────────────────────────
+    // Queue a debug command for execution on the render thread (looked up by
+    // name in the DebugCommandRegistry when drained).
+    void cmdDebugInvoke(const std::string& name, std::vector<DebugArg> args);
+
     /** @brief Copy the latest snapshot; zero-filled if the engine has not published one yet. */
     void getSnapshot(TeSceneSnapshot& out) const;
 
@@ -77,15 +83,18 @@ private:
     struct CmdAssignMat   { int what; uint64_t boxId; uint32_t materialId; };
     struct CmdModelPos    { float x, y, z; };
     struct CmdBoxPos      { uint64_t id; float x, y, z; };
+    struct CmdDebugInvoke { std::string name; std::vector<DebugArg> args; };
     using Command = std::variant<CmdAttach, CmdResize, CmdLoadModel, CmdLoadAst,
                                  CmdAddBox, CmdRemoveBox, CmdSetMatParams, CmdClearColor,
-                                 CmdSelect, CmdAssignMat, CmdModelPos, CmdBoxPos>;
+                                 CmdSelect, CmdAssignMat, CmdModelPos, CmdBoxPos,
+                                 CmdDebugInvoke>;
 
     void enqueue(Command cmd);
 
     // ── Render thread ──────────────────────────────────────────────────────
     void threadMain();
     void threadInit();          // GLFW + Vulkan + initial scene (throwing = failure)
+    void registerDebugCommands();  // populate the DebugCommandRegistry (once)
     void drainCommands();
     void applyCommand(const Command& cmd);
     void processInput();

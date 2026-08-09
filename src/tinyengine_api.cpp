@@ -1,8 +1,12 @@
 #include "tinyengine_api.h"
 #include "Presenter.hpp"
+#include "DebugCommand.hpp"
+#include "TinyEngineDebug.hpp"
 
+#include <cstring>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace {
 
@@ -138,4 +142,87 @@ void te_set_log_callback(TeLogCallback cb)
 {
     std::lock_guard lk(g_logMutex);
     g_logCb = cb;
+}
+
+// ─── Debug commands ─────────────────────────────────────────────────────────────
+
+namespace {
+
+void copyStr(char* dst, size_t cap, const std::string& src)
+{
+    const size_t n = src.size() < cap - 1 ? src.size() : cap - 1;
+    std::memcpy(dst, src.data(), n);
+    dst[n] = '\0';
+}
+
+} // namespace
+
+int32_t te_debug_command_count(void)
+{
+    return static_cast<int32_t>(tinyengine::debugcmd::DebugCommandRegistry::instance().count());
+}
+
+int32_t te_debug_command_info(int32_t index, TeDebugCommandInfo* out)
+{
+    using namespace tinyengine::debugcmd;
+    if (!out) return -1;
+    const DebugCommandEntry* e = DebugCommandRegistry::instance().at(static_cast<size_t>(index));
+    if (!e) return -1;
+
+    *out = TeDebugCommandInfo{};
+    copyStr(out->name, TE_DBG_NAME_LEN, e->meta.name);
+    copyStr(out->help, TE_DBG_HELP_LEN, e->meta.help);
+
+    const int32_t pc = static_cast<int32_t>(e->meta.params.size());
+    out->paramCount = pc < TE_DBG_MAX_PARAMS ? pc : TE_DBG_MAX_PARAMS;
+    for (int32_t i = 0; i < out->paramCount; ++i) {
+        const DebugParamMeta& m = e->meta.params[i];
+        TeDebugParamInfo& p = out->params[i];
+        p.type   = static_cast<int32_t>(m.type);
+        copyStr(p.name, TE_DBG_NAME_LEN, m.name);
+        copyStr(p.enumValues, TE_DBG_ENUM_LEN, m.enumValues);
+        p.minVal = m.minVal;
+        p.maxVal = m.maxVal;
+        p.defNum = (m.defVal.type == DebugParamType::Float) ? m.defVal.f
+                 : (m.defVal.type == DebugParamType::Bool)  ? (m.defVal.b ? 1.0 : 0.0)
+                 : static_cast<double>(m.defVal.i);
+        p.defVec[0] = m.defVal.v[0]; p.defVec[1] = m.defVal.v[1];
+        p.defVec[2] = m.defVal.v[2]; p.defVec[3] = m.defVal.v[3];
+        copyStr(p.defStr, TE_DBG_STRING_LEN, m.defVal.s);
+    }
+    return 0;
+}
+
+int32_t te_debug_invoke(const char* name, const TeDebugArg* args, int32_t argCount)
+{
+    if (!g_engine || !name) return -1;
+    std::vector<DebugArg> converted;
+    converted.reserve(argCount > 0 ? static_cast<size_t>(argCount) : 0);
+    for (int32_t i = 0; i < argCount; ++i) {
+        const TeDebugArg& a = args[i];
+        DebugArg d;
+        d.type = static_cast<DebugParamType>(a.type);
+        d.i = a.i;
+        d.f = a.f;
+        d.b = a.b != 0;
+        d.v[0] = a.v[0]; d.v[1] = a.v[1]; d.v[2] = a.v[2]; d.v[3] = a.v[3];
+        d.s = a.s;
+        converted.push_back(std::move(d));
+    }
+    g_engine->cmdDebugInvoke(name, std::move(converted));
+    return 0;
+}
+
+int32_t te_debug_capture_frame(void)
+{
+    // TriggerCapture only sets a flag inside RenderDoc; safe to call from the
+    // host (UI) thread. The capture is taken on the next present.
+    if (!tinyengine::debug::triggerCapture()) {
+        forwardLog(1, "RenderDoc not available (renderdoc.dll not loaded).");
+        return -1;
+    }
+    const char* tmpl = tinyengine::debug::getCaptureFilePathTemplate();
+    forwardLog(0, std::string("RenderDoc: capturing next frame -> ") +
+                  (tmpl ? tmpl : "(default path)") + "_frameN.rdc");
+    return 0;
 }

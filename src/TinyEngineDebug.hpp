@@ -27,11 +27,23 @@ void endLabel(VkCommandBuffer cmd);
 /// Attempt to load renderdoc.dll and obtain the RenderDoc API. Call before vkCreateInstance.
 void initRenderDoc();
 
+/// Human-readable status of the last initRenderDoc() call (for surfacing to the
+/// Editor log). Never returns nullptr.
+const char* getRenderDocStatus();
+
 /// True if RenderDoc was detected and the API was successfully loaded.
 bool isRenderDocAttached();
 
 /// Access the RenderDoc API for programmatic capture control (may return nullptr).
 RENDERDOC_API_1_6_0* getRenderDocApi();
+
+/// Trigger a RenderDoc capture of the next frame. Returns false if RenderDoc is
+/// not available. The .rdc capture is saved to RenderDoc's default location.
+bool triggerCapture();
+
+/// The capture file path template (e.g. "<cwd>/captures/tinyengine"); RenderDoc
+/// appends "_frameN.rdc". Returns nullptr if RenderDoc is not available.
+const char* getCaptureFilePathTemplate();
 
 } // namespace tinyengine::debug
 

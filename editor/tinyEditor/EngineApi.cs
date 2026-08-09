@@ -64,6 +64,55 @@ public static class EngineApi
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void TeLogCallback(int level, IntPtr msg);
 
+    // ── Debug command reflection (mirrors src/tinyengine_api.h) ──────────────────
+    public const int DbgParamInt = 0;
+    public const int DbgParamFloat = 1;
+    public const int DbgParamBool = 2;
+    public const int DbgParamString = 3;
+    public const int DbgParamEnum = 4;
+    public const int DbgParamVec3 = 5;
+    public const int DbgParamUInt64 = 6;
+    public const int DbgParamColor = 7;
+
+    public const int DbgMaxParams = 8;
+    private const int DbgNameLen = 128;
+    private const int DbgHelpLen = 512;
+    private const int DbgEnumLen = 256;
+    private const int DbgStringLen = 256;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct TeDebugParamInfo
+    {
+        public int type;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DbgNameLen)] public string name;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DbgEnumLen)] public string enumValues;
+        public double minVal;
+        public double maxVal;
+        public double defNum;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public float[] defVec;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DbgStringLen)] public string defStr;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct TeDebugCommandInfo
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DbgNameLen)] public string name;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DbgHelpLen)] public string help;
+        public int paramCount;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = DbgMaxParams)] public TeDebugParamInfo[] params_;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    public struct TeDebugArg
+    {
+        public int type;
+        public long i;
+        public double f;
+        public int b;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public float[] v;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = DbgStringLen)] public string s;
+    }
+
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int te_init([MarshalAs(UnmanagedType.LPUTF8Str)] string resRoot);
 
@@ -114,6 +163,19 @@ public static class EngineApi
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     private static extern void te_set_log_callback(TeLogCallback cb);
 
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_debug_command_count();
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_debug_command_info(int index, ref TeDebugCommandInfo outInfo);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_debug_invoke([MarshalAs(UnmanagedType.LPUTF8Str)] string name,
+                                              [In] TeDebugArg[] args, int argCount);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_debug_capture_frame();
+
     // ── High-level wrappers ──────────────────────────────────────────────────────
 
     internal static bool IsInitialized { get; private set; }
@@ -162,5 +224,39 @@ public static class EngineApi
         if (!IsInitialized) return;
         te_shutdown();
         IsInitialized = false;
+    }
+
+    // ── Debug command wrappers ───────────────────────────────────────────────────
+
+    /// <summary>Enumerate all registered debug commands (empty if engine not ready).</summary>
+    internal static System.Collections.Generic.List<TeDebugCommandInfo> GetDebugCommands()
+    {
+        var list = new System.Collections.Generic.List<TeDebugCommandInfo>();
+        if (!IsInitialized) return list;
+        int n;
+        try { n = te_debug_command_count(); } catch { return list; }
+        for (int i = 0; i < n; ++i)
+        {
+            var info = new TeDebugCommandInfo();
+            if (te_debug_command_info(i, ref info) == 0)
+                list.Add(info);
+        }
+        return list;
+    }
+
+    /// <summary>Queue a debug command for execution on the render thread.</summary>
+    internal static void DebugInvoke(string name, TeDebugArg[] args)
+    {
+        if (!IsInitialized) return;
+        try { te_debug_invoke(name, args, args?.Length ?? 0); }
+        catch (Exception ex) { LogReceived?.Invoke(2, "te_debug_invoke failed: " + ex.Message); }
+    }
+
+    /// <summary>Trigger a RenderDoc capture of the next frame. Returns true if accepted.</summary>
+    internal static bool CaptureFrame()
+    {
+        if (!IsInitialized) return false;
+        try { return te_debug_capture_frame() == 0; }
+        catch (Exception ex) { LogReceived?.Invoke(2, "te_debug_capture_frame failed: " + ex.Message); return false; }
     }
 }
