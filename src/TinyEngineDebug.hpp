@@ -54,6 +54,11 @@ RENDERDOC_API_1_6_0* getRenderDocApi();
 /// not available. The .rdc capture is saved to RenderDoc's default location.
 bool triggerCapture();
 
+/// Path of the most recently taken .rdc capture in this session (empty if none
+/// yet). Writes up to outBufSize-1 chars + NUL. Returns bytes written excluding
+/// NUL, or -1 on error / not available.
+int getLastCapturePath(char* outBuf, int outBufSize);
+
 /// The capture file path template (e.g. "<cwd>/captures/tinyengine"); RenderDoc
 /// appends "_frameN.rdc". Returns nullptr if RenderDoc is not available.
 const char* getCaptureFilePathTemplate();

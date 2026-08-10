@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 
@@ -14,6 +16,7 @@ namespace tinyEditor;
 public partial class MainWindow : Window
 {
     private readonly DispatcherTimer snapshotTimer_;
+    private EditorSettings settings_ = EditorSettings.Load();
 
     public MainWindow()
     {
@@ -81,9 +84,87 @@ public partial class MainWindow : Window
 
     private void OnCaptureFrame(object sender, RoutedEventArgs e)
     {
-        bool ok = EngineApi.CaptureFrame();
-        logPanel.Append(ok ? 0 : 1,
-            ok ? "RenderDoc: capturing next frame."
-               : "RenderDoc not available (renderdoc.dll not loaded).");
+        string uiPath = settings_.RenderDocUiPath?.Trim() ?? "";
+        bool haveUserPath = !string.IsNullOrEmpty(uiPath);
+
+        // If the user pinned a path but it doesn't exist, warn and fall back to
+        // the engine-driven LaunchReplayUI — don't skip the capture itself.
+        if (haveUserPath && !File.Exists(uiPath))
+        {
+            logPanel.Append(2, $"RenderDoc: configured UI path does not exist: {uiPath}");
+            logPanel.Append(1, "RenderDoc: falling back to built-in launcher.");
+            haveUserPath = false;
+        }
+
+        if (!haveUserPath)
+        {
+            // Old behaviour: engine triggers capture + LaunchReplayUI().
+            bool ok = EngineApi.CaptureFrame();
+            logPanel.Append(ok ? 0 : 1,
+                ok ? "RenderDoc: capturing next frame (built-in launcher)."
+                   : "RenderDoc not available (renderdoc.dll not loaded).");
+            return;
+        }
+
+        // With a user-supplied UI: trigger capture without the engine launching
+        // anything, then poll briefly for the .rdc to appear and spawn the UI.
+        if (!EngineApi.CaptureFrameNoUI())
+        {
+            logPanel.Append(1, "RenderDoc not available (renderdoc.dll not loaded).");
+            return;
+        }
+        // Give the render thread a few frames to write the file before opening it.
+        var poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        int attempts = 0;
+        string beforePath = EngineApi.GetLastCapturePath();
+        poll.Tick += (_, _) =>
+        {
+            attempts++;
+            string cur = EngineApi.GetLastCapturePath();
+            if (!string.IsNullOrEmpty(cur) && cur != beforePath)
+            {
+                poll.Stop();
+                LaunchQrenderdoc(uiPath, cur);
+                return;
+            }
+            if (attempts >= 20)   // ~3s
+            {
+                poll.Stop();
+                logPanel.Append(1, "RenderDoc: timed out waiting for .rdc; capture may still land under captures/.");
+            }
+        };
+        poll.Start();
+    }
+
+    private void OnEditRenderDocPath(object sender, RoutedEventArgs e)
+    {
+        var dlg = new RenderDocPathDialog(settings_.RenderDocUiPath) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            settings_.RenderDocUiPath = dlg.ResultPath;
+            settings_.Save();
+            logPanel.Append(0, string.IsNullOrEmpty(settings_.RenderDocUiPath)
+                ? "RenderDoc UI path cleared."
+                : "RenderDoc UI path set to: " + settings_.RenderDocUiPath);
+        }
+    }
+
+    private void LaunchQrenderdoc(string exe, string rdcPath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = exe,
+                Arguments = "\"" + rdcPath + "\"",
+                UseShellExecute = true,   // let the shell handle any spaces/quoting
+            };
+            Process.Start(psi);
+            logPanel.Append(0, $"RenderDoc UI launched: {Path.GetFileName(exe)}  <-  {rdcPath}");
+        }
+        catch (Exception ex)
+        {
+            logPanel.Append(2, $"Failed to launch RenderDoc UI ({exe}): {ex.Message}");
+        }
     }
 }

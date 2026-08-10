@@ -186,6 +186,22 @@ bool triggerCapture()
     return true;
 }
 
+int getLastCapturePath(char* outBuf, int outBufSize)
+{
+    if (!rdocApi || !outBuf || outBufSize <= 0) return -1;
+    outBuf[0] = '\0';
+    const uint32_t n = rdocApi->GetNumCaptures();
+    if (n == 0) return 0;
+    uint32_t pathLen = 0;
+    uint64_t timestamp = 0;
+    // First call: query the required path length (pathLen includes NUL).
+    if (!rdocApi->GetCapture(n - 1, nullptr, &pathLen, &timestamp)) return -1;
+    if (pathLen == 0) return 0;
+    if (static_cast<int>(pathLen) > outBufSize) return -1; // caller buffer too small
+    if (!rdocApi->GetCapture(n - 1, outBuf, nullptr, &timestamp)) return -1;
+    return static_cast<int>(pathLen > 0 ? pathLen - 1 : 0);
+}
+
 const char* getCaptureFilePathTemplate()
 {
     if (!rdocApi) return nullptr;

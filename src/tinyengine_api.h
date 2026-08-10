@@ -183,8 +183,20 @@ TE_API int32_t te_debug_command_info(int32_t index, TeDebugCommandInfo* out);
 TE_API int32_t te_debug_invoke(const char* name, const TeDebugArg* args, int32_t argCount);
 
 /* Trigger a RenderDoc capture of the next rendered frame. Returns 0 if the
- * request was accepted (RenderDoc available), -1 otherwise. */
+ * request was accepted (RenderDoc available), -1 otherwise. Also invokes
+ * RenderDoc's LaunchReplayUI() to bring up qrenderdoc. */
 TE_API int32_t te_debug_capture_frame(void);
+
+/* Same as te_debug_capture_frame but does NOT launch the replay UI, so the
+ * caller controls which qrenderdoc.exe (if any) to spawn. Editor uses this
+ * variant together with a user-supplied UI path. */
+TE_API int32_t te_debug_capture_frame_no_ui(void);
+
+/* Path of the most recently taken .rdc capture in this session (empty string
+ * if none yet). Callers should poll this shortly after capture to launch a
+ * user-chosen qrenderdoc.exe against the file. Returns the number of chars
+ * written (excluding NUL), or -1 on error. */
+TE_API int32_t te_debug_get_last_capture_path(char* outBuf, int32_t bufSize);
 
 #ifdef __cplusplus
 } /* extern "C" */

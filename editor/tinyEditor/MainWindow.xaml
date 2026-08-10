@@ -11,6 +11,7 @@
                 <MenuItem Header="Debug _Console" Click="OnOpenConsole"/>
                 <Separator/>
                 <MenuItem Header="Capture Frame (_RenderDoc)" Click="OnCaptureFrame"/>
+                <MenuItem Header="RenderDoc UI _Path..." Click="OnEditRenderDocPath"/>
             </MenuItem>
         </Menu>
 

@@ -232,3 +232,20 @@ int32_t te_debug_capture_frame(void)
         forwardLog(1, "RenderDoc: could not launch replay UI (qrenderdoc not found?).");
     return 0;
 }
+
+int32_t te_debug_capture_frame_no_ui(void)
+{
+    if (!tinyengine::debug::triggerCapture()) {
+        forwardLog(1, "RenderDoc not available (renderdoc.dll not loaded).");
+        return -1;
+    }
+    const char* tmpl = tinyengine::debug::getCaptureFilePathTemplate();
+    forwardLog(0, std::string("RenderDoc: capturing next frame -> ") +
+                  (tmpl ? tmpl : "(default path)") + "_frameN.rdc");
+    return 0;
+}
+
+int32_t te_debug_get_last_capture_path(char* outBuf, int32_t bufSize)
+{
+    return tinyengine::debug::getLastCapturePath(outBuf, bufSize);
+}

@@ -176,6 +176,13 @@ public static class EngineApi
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int te_debug_capture_frame();
 
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_debug_capture_frame_no_ui();
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int te_debug_get_last_capture_path(
+        [Out] byte[] buffer, int bufSize);
+
     // ── High-level wrappers ──────────────────────────────────────────────────────
 
     internal static bool IsInitialized { get; private set; }
@@ -252,11 +259,41 @@ public static class EngineApi
         catch (Exception ex) { LogReceived?.Invoke(2, "te_debug_invoke failed: " + ex.Message); }
     }
 
-    /// <summary>Trigger a RenderDoc capture of the next frame. Returns true if accepted.</summary>
+    /// <summary>Trigger a RenderDoc capture of the next frame. Returns true if accepted.
+    /// Also asks RenderDoc to launch its built-in replay UI (best-effort).</summary>
     internal static bool CaptureFrame()
     {
         if (!IsInitialized) return false;
         try { return te_debug_capture_frame() == 0; }
         catch (Exception ex) { LogReceived?.Invoke(2, "te_debug_capture_frame failed: " + ex.Message); return false; }
+    }
+
+    /// <summary>Trigger a RenderDoc capture without launching the replay UI. Caller
+    /// is responsible for opening the resulting .rdc (see GetLastCapturePath).</summary>
+    internal static bool CaptureFrameNoUI()
+    {
+        if (!IsInitialized) return false;
+        try { return te_debug_capture_frame_no_ui() == 0; }
+        catch (Exception ex) { LogReceived?.Invoke(2, "te_debug_capture_frame_no_ui failed: " + ex.Message); return false; }
+    }
+
+    /// <summary>Path of the most recent .rdc capture produced this session
+    /// (empty string if none). May be empty right after a capture request — the
+    /// file is only written when the next frame presents.</summary>
+    internal static string GetLastCapturePath()
+    {
+        if (!IsInitialized) return "";
+        try
+        {
+            var buf = new byte[1024];
+            int n = te_debug_get_last_capture_path(buf, buf.Length);
+            if (n <= 0) return "";
+            return System.Text.Encoding.UTF8.GetString(buf, 0, n);
+        }
+        catch (Exception ex)
+        {
+            LogReceived?.Invoke(2, "te_debug_get_last_capture_path failed: " + ex.Message);
+            return "";
+        }
     }
 }
