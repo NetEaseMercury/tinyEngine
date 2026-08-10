@@ -1,4 +1,5 @@
 #include "VulkanContext.hpp"
+#include "TinyEngineDebug.hpp"
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -98,13 +99,47 @@ void VulkanContext::createInstance()
     createInfo.enabledExtensionCount   = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
 
-    if (enableValidationLayers) {
-        createInfo.enabledLayerCount   = static_cast<uint32_t>(validationLayers.size());
-        createInfo.ppEnabledLayerNames = validationLayers.data();
+    // Enumerate the layers the Vulkan loader can see. This surfaces whether the
+    // RenderDoc capture layer is discoverable at all (independent of whether it
+    // will be auto-enabled), and lets us explicitly enable it below.
+    uint32_t layerCount = 0;
+    vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+    std::string layerReport = "Vulkan loader sees " + std::to_string(layerCount) + " instance layers:";
+    bool renderdocLayerAvailable = false;
+    for (const auto& lp : availableLayers) {
+        layerReport += "\n  - " + std::string(lp.layerName);
+        if (std::string(lp.layerName) == "VK_LAYER_RENDERDOC_Capture")
+            renderdocLayerAvailable = true;
     }
+    tinyengine::debug::appendRenderDocStatus(layerReport.c_str());
 
-    if (vkCreateInstance(&createInfo, nullptr, &instance_) != VK_SUCCESS)
+    // Build the enabled-layer list. RenderDoc's Vulkan capture layer refuses
+    // explicit enable (returns VK_ERROR_INITIALIZATION_FAILED), so we rely on
+    // the implicit-layer mechanism gated by the ENABLE_VULKAN_RENDERDOC_CAPTURE
+    // env var. That env var MUST be set before the Vulkan loader is first
+    // touched — the Editor does this in App.OnStartup before te_init runs.
+    std::vector<const char*> layersToEnable;
+    if (enableValidationLayers) {
+        for (const char* n : validationLayers) layersToEnable.push_back(n);
+    }
+    if (renderdocLayerAvailable) {
+        tinyengine::debug::appendRenderDocStatus(
+            "VK_LAYER_RENDERDOC_Capture is discoverable; relying on implicit-layer auto-load "
+            "(ENABLE_VULKAN_RENDERDOC_CAPTURE=1 must be set before process start).");
+    } else {
+        tinyengine::debug::appendRenderDocStatus("VK_LAYER_RENDERDOC_Capture NOT discoverable by the Vulkan loader.");
+    }
+    createInfo.enabledLayerCount   = static_cast<uint32_t>(layersToEnable.size());
+    createInfo.ppEnabledLayerNames = layersToEnable.empty() ? nullptr : layersToEnable.data();
+
+    VkResult res = vkCreateInstance(&createInfo, nullptr, &instance_);
+    if (res != VK_SUCCESS) {
+        tinyengine::debug::appendRenderDocStatus(
+            ("vkCreateInstance failed (VkResult=" + std::to_string(res) + ")").c_str());
         throw std::runtime_error("Failed to create Vulkan instance!");
+    }
 }
 
 void VulkanContext::createSurface(GLFWwindow* window)

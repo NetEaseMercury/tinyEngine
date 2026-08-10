@@ -16,3 +16,6 @@
 [submodule "thirdParty/cgltf"]
 	path = thirdParty/cgltf
 	url = https://github.com/jkuhlmann/cgltf
+[submodule "thirdParty/renderdoc_src"]
+	path = thirdParty/renderdoc_src
+	url = https://github.com/baldurk/renderdoc.git

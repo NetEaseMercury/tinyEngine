@@ -3,6 +3,7 @@
  * @brief VK_EXT_debug_utils function pointer loading + RenderDoc runtime API init.
  */
 #include "TinyEngineDebug.hpp"
+#include <cctype>
 #include <iostream>
 #include <string>
 
@@ -50,30 +51,67 @@ void endLabel(VkCommandBuffer cmd)
     pfnEndLabel(cmd);
 }
 
+void preInstanceRenderDocSetup()
+{
+#ifdef _WIN32
+    // Enable RenderDoc's Vulkan capture layer for this process. Must be set
+    // before the Vulkan loader enumerates layers or the layer stays inactive.
+    SetEnvironmentVariableA("ENABLE_VULKAN_RENDERDOC_CAPTURE", "1");
+
+    // If the system has no RenderDoc registered as an implicit layer, fall back
+    // to the copy shipped next to the engine DLL (renderdoc.dll + renderdoc.json).
+    // VK_ADD_IMPLICIT_LAYER_PATH makes the loader scan that directory for layer
+    // manifests in addition to the registered ones (Vulkan loader 1.3.234+).
+    HKEY key{};
+    bool systemLayerRegistered = false;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers",
+                      0, KEY_READ, &key) == ERROR_SUCCESS) {
+        char  valueName[MAX_PATH];
+        DWORD idx = 0, nameLen = MAX_PATH;
+        while (RegEnumValueA(key, idx, valueName, &nameLen, nullptr, nullptr, nullptr, nullptr)
+               == ERROR_SUCCESS) {
+            std::string v(valueName);
+            for (auto& c : v) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+            if (v.find("renderdoc") != std::string::npos) { systemLayerRegistered = true; break; }
+            ++idx; nameLen = MAX_PATH;
+        }
+        RegCloseKey(key);
+    }
+
+    if (!systemLayerRegistered) {
+        // Locate the directory of this engine module; the bundled layer sits there.
+        HMODULE self{};
+        GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           reinterpret_cast<LPCSTR>(&preInstanceRenderDocSetup), &self);
+        char selfPath[MAX_PATH] = {};
+        GetModuleFileNameA(self, selfPath, MAX_PATH);
+        std::string dir(selfPath);
+        const size_t slash = dir.find_last_of("\\/");
+        if (slash != std::string::npos) dir.resize(slash);
+        SetEnvironmentVariableA("VK_ADD_IMPLICIT_LAYER_PATH", dir.c_str());
+        rdocStatus = "RenderDoc: no system layer registered; using bundled layer in " + dir;
+    }
+#endif
+}
+
 void initRenderDoc()
 {
 #ifdef _WIN32
-    // RenderDoc's Vulkan capture layer is registered as an implicit layer but is
-    // gated behind this env var (see renderdoc.json "enable_environment"). It
-    // MUST be set before the Vulkan loader enumerates layers (i.e. before
-    // vkCreateInstance) or RenderDoc never hooks the Vulkan command stream and
-    // TriggerCapture has no frame to capture. This is the key to self-loaded
-    // capture working without launching from the RenderDoc UI.
+    // Idempotent safeguard in case pre-instance setup was skipped.
     SetEnvironmentVariableA("ENABLE_VULKAN_RENDERDOC_CAPTURE", "1");
 
-    // Prefer an already-injected RenderDoc (launched from the RenderDoc UI);
-    // otherwise actively load our bundled renderdoc.dll so in-app capture works
-    // even when the Editor is started directly. Must happen before
-    // vkCreateInstance so RenderDoc can hook the Vulkan loader.
+    // We MUST obtain the API from the same renderdoc.dll that the Vulkan loader
+    // picked up as the implicit layer (typically the system-installed one). If
+    // we also LoadLibrary'd our bundled dll, two independent renderdoc.dll
+    // instances would coexist: layer hooks would run in one, our TriggerCapture
+    // would flip a flag in the other, and no capture would ever happen. So we
+    // ONLY pick up an already-loaded renderdoc.dll here.
     HMODULE mod = GetModuleHandleA("renderdoc.dll");
-    bool alreadyInjected = (mod != nullptr);
     if (!mod) {
-        mod = LoadLibraryA("renderdoc.dll");
-        if (mod)
-            std::cout << "[TinyEngine] renderdoc.dll loaded from application directory.\n";
-    }
-    if (!mod) {
-        rdocStatus = "RenderDoc: renderdoc.dll not found (no injection, LoadLibrary failed).";
+        rdocStatus = "RenderDoc: renderdoc.dll not loaded (Vulkan capture layer "
+                     "was not picked up by the loader — ENABLE_VULKAN_RENDERDOC_CAPTURE "
+                     "must be set before the process starts).";
         std::cout << "[TinyEngine] " << rdocStatus << "\n";
         return;
     }
@@ -98,14 +136,17 @@ void initRenderDoc()
         std::string tmpl = std::string(cwd) + "\\captures\\tinyengine";
         CreateDirectoryA((std::string(cwd) + "\\captures").c_str(), nullptr);
         rdocApi->SetCaptureFilePathTemplate(tmpl.c_str());
-        rdocStatus = "RenderDoc API " + std::to_string(major) + "." + std::to_string(minor) +
-                     "." + std::to_string(patch) + " connected (" +
-                     (alreadyInjected ? "UI-injected" : "self-loaded") +
-                     "); captures -> " + tmpl + "_frameN.rdc";
+        // Report which renderdoc.dll we bound to, so double-DLL situations are
+        // visible in the log.
+        char dllPath[MAX_PATH] = {};
+        GetModuleFileNameA(mod, dllPath, MAX_PATH);
+        appendRenderDocStatus(("RenderDoc API " + std::to_string(major) + "." + std::to_string(minor) +
+                     "." + std::to_string(patch) + " bound to " + dllPath +
+                     "; captures -> " + tmpl + "_frameN.rdc").c_str());
         std::cout << "[TinyEngine] " << rdocStatus << "\n";
     } else {
         rdocApi = nullptr;
-        rdocStatus = "RenderDoc: RENDERDOC_GetAPI returned failure (dll too old for requested API).";
+        appendRenderDocStatus("RenderDoc: RENDERDOC_GetAPI returned failure (dll too old for requested API).");
         std::cout << "[TinyEngine] " << rdocStatus << "\n";
     }
 #else
@@ -117,6 +158,13 @@ void initRenderDoc()
 const char* getRenderDocStatus()
 {
     return rdocStatus.empty() ? "RenderDoc: (not initialized)" : rdocStatus.c_str();
+}
+
+void appendRenderDocStatus(const char* line)
+{
+    if (!line) return;
+    if (!rdocStatus.empty()) rdocStatus += "\n";
+    rdocStatus += line;
 }
 
 bool isRenderDocAttached()
@@ -142,6 +190,16 @@ const char* getCaptureFilePathTemplate()
 {
     if (!rdocApi) return nullptr;
     return rdocApi->GetCaptureFilePathTemplate();
+}
+
+bool launchReplayUI()
+{
+    if (!rdocApi) return false;
+    // Already connected to a running UI (e.g. launched from RenderDoc)? Nothing to do.
+    if (rdocApi->IsTargetControlConnected()) return true;
+    // 1 = connect the newly launched UI back to this process via target control,
+    // so captures show up in its capture list automatically.
+    return rdocApi->LaunchReplayUI(1, nullptr) != 0;
 }
 
 } // namespace tinyengine::debug

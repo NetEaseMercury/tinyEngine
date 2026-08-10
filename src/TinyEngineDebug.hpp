@@ -24,12 +24,25 @@ void beginLabel(VkCommandBuffer cmd, const char* name,
 /// Insert a debug label end into the command buffer.
 void endLabel(VkCommandBuffer cmd);
 
-/// Attempt to load renderdoc.dll and obtain the RenderDoc API. Call before vkCreateInstance.
+/// Set env vars needed to enable the Vulkan capture layer. Must be called
+/// before any Vulkan API is touched (i.e. before vkCreateInstance / even
+/// before vkEnumerateInstanceLayerProperties).
+void preInstanceRenderDocSetup();
+
+/// Bind the RenderDoc in-app API. Must be called AFTER vkCreateInstance so the
+/// Vulkan loader has had a chance to load renderdoc.dll as an implicit layer;
+/// otherwise GetModuleHandle("renderdoc.dll") returns null and RenderDoc is
+/// considered unavailable this session.
 void initRenderDoc();
 
 /// Human-readable status of the last initRenderDoc() call (for surfacing to the
 /// Editor log). Never returns nullptr.
 const char* getRenderDocStatus();
+
+/// Append a diagnostic line to the RenderDoc status text (surfaced to the log
+/// alongside getRenderDocStatus()). Used by other subsystems (e.g. Vulkan
+/// instance creation) to report layer enumeration results.
+void appendRenderDocStatus(const char* line);
 
 /// True if RenderDoc was detected and the API was successfully loaded.
 bool isRenderDocAttached();
@@ -44,6 +57,11 @@ bool triggerCapture();
 /// The capture file path template (e.g. "<cwd>/captures/tinyengine"); RenderDoc
 /// appends "_frameN.rdc". Returns nullptr if RenderDoc is not available.
 const char* getCaptureFilePathTemplate();
+
+/// Launch the RenderDoc replay UI (qrenderdoc) and connect it to this process
+/// via target control, so captures appear in its list automatically. Returns
+/// false if RenderDoc is unavailable or the UI could not be launched.
+bool launchReplayUI();
 
 } // namespace tinyengine::debug
 

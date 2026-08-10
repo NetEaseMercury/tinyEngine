@@ -364,6 +364,14 @@ FodyWeavers.xsd
 # DXC shader compiler (auto-downloaded by CMake)
 thirdParty/dxc/
 
+# RenderDoc prebuilt capture DLL (optional fallback; renderdoc.json and
+# renderdoc_app.h ARE committed, only the large binary is ignored).
+thirdParty/renderdoc/renderdoc.dll
+
+# RenderDoc submodule build output (MSBuild writes into the source tree)
+thirdParty/renderdoc_src/x64/
+thirdParty/renderdoc_src/Win32/
+
 # C# solution directory (sln regenerated on demand by build_scripts/build_all.bat;
 # the build targets tinyEditor.csproj directly and does not need the .sln)
 build/

@@ -33,7 +33,10 @@
     </PropertyGroup>
     <ItemGroup>
       <EngineDll Include="$(EngineOutDir)\tinyEngine.dll" />
+      <!-- Bundled RenderDoc capture layer; only used as a fallback when the
+           system has no RenderDoc registered (see TinyEngineDebug.cpp). -->
       <EngineRenderDoc Include="$(EngineOutDir)\renderdoc.dll" />
+      <EngineRenderDoc Include="$(EngineOutDir)\renderdoc.json" />
       <EngineResFiles Include="$(EngineOutDir)\res\**\*" />
     </ItemGroup>
     <Warning Text="tinyEngine.dll not found at $(EngineOutDir) - build the C++ engine first (cmake build preset x64-debug)."

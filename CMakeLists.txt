@@ -77,6 +77,11 @@ get_target_property(TARGET_DIR tinyEngine RUNTIME_OUTPUT_DIRECTORY)
 # Add preprocessor definitions
 add_definitions(-DGLEW_STATIC)
 
+# ── Third-party versions (single source of truth: thirdParty/versions.cfg) ───
+include(${CMAKE_SOURCE_DIR}/cmake/ReadDepsVersions.cmake)
+te_read_deps_versions("${CMAKE_SOURCE_DIR}/thirdParty/versions.cfg")
+message(STATUS "Dep versions: RenderDoc=${RENDERDOC_VERSION} DXC=${DXC_VERSION}")
+
 # ── HLSL → SPIR-V via DXC (auto-download if missing) ────────────────────────
 if(CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(DXC_ARCH x64)
@@ -85,7 +90,7 @@ else()
 endif()
 set(DXC_DIR "${CMAKE_SOURCE_DIR}/thirdParty/dxc")
 set(DXC_EXE "${DXC_DIR}/bin/${DXC_ARCH}/dxc.exe")
-set(DXC_URL "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2602.24/dxc_2026_05_27.zip")
+set(DXC_URL "https://github.com/microsoft/DirectXShaderCompiler/releases/download/${DXC_VERSION}/${DXC_PACKAGE}")
 
 if(NOT EXISTS "${DXC_EXE}")
     set(DXC_ZIP "${DXC_DIR}/dxc.zip")
@@ -106,43 +111,11 @@ endif()
 set(DXC_EXECUTABLE "${DXC_EXE}")
 message(STATUS "DXC: ${DXC_EXECUTABLE}")
 
-# ── RenderDoc in-app capture DLL (auto-download if missing) ─────────────────
-# The engine LoadLibrary's renderdoc.dll at startup for programmatic frame
-# capture. Only the DLL is needed (not the full RenderDoc install); it is not
-# committed to the repo (see .gitignore) and is fetched here on first configure.
-set(RENDERDOC_VERSION "1.45")
-set(RENDERDOC_DIR "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc")
-set(RENDERDOC_DLL "${RENDERDOC_DIR}/renderdoc.dll")
-set(RENDERDOC_URL "https://renderdoc.org/stable/${RENDERDOC_VERSION}/RenderDoc_${RENDERDOC_VERSION}_64.zip")
-
-if(WIN32 AND NOT EXISTS "${RENDERDOC_DLL}")
-    set(RENDERDOC_ZIP "${RENDERDOC_DIR}/renderdoc.zip")
-    set(RENDERDOC_EXTRACT "${RENDERDOC_DIR}/_extract")
-    message(STATUS "Downloading RenderDoc ${RENDERDOC_VERSION} from ${RENDERDOC_URL} ...")
-    file(DOWNLOAD "${RENDERDOC_URL}" "${RENDERDOC_ZIP}" STATUS rdocStatus TIMEOUT 180)
-    list(GET rdocStatus 0 rdocCode)
-    if(NOT rdocCode EQUAL 0)
-        list(GET rdocStatus 1 rdocErr)
-        message(WARNING "RenderDoc download failed: ${rdocErr}. In-app capture will be unavailable.")
-    else()
-        file(MAKE_DIRECTORY "${RENDERDOC_EXTRACT}")
-        execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${RENDERDOC_ZIP}"
-            WORKING_DIRECTORY "${RENDERDOC_EXTRACT}")
-        # The portable zip contains RenderDoc_<ver>_64/renderdoc.dll; locate it.
-        file(GLOB_RECURSE RENDERDOC_FOUND "${RENDERDOC_EXTRACT}/renderdoc.dll")
-        if(RENDERDOC_FOUND)
-            list(GET RENDERDOC_FOUND 0 rdocSrc)
-            file(COPY "${rdocSrc}" DESTINATION "${RENDERDOC_DIR}")
-        else()
-            message(WARNING "renderdoc.dll not found inside the downloaded archive.")
-        endif()
-        file(REMOVE "${RENDERDOC_ZIP}")
-        file(REMOVE_RECURSE "${RENDERDOC_EXTRACT}")
-    endif()
-endif()
-if(EXISTS "${RENDERDOC_DLL}")
-    message(STATUS "RenderDoc DLL: ${RENDERDOC_DLL}")
-endif()
+# ── RenderDoc capture core (built from submodule when requested) ─────────────
+# OFF by default: building RenderDoc takes several minutes, and day-to-day work
+# does not need it (the engine falls back to a system-installed RenderDoc).
+# Turn on with: cmake --preset x64-debug -DTE_BUILD_RENDERDOC=ON
+option(TE_BUILD_RENDERDOC "Build RenderDoc's capture core from thirdParty/renderdoc_src" OFF)
 
 set(SHADER_SRC_DIR "${CMAKE_SOURCE_DIR}/res/shaders")
 set(SHADER_OUT_DIR "${CMAKE_BINARY_DIR}/res/shaders")
@@ -185,15 +158,27 @@ add_custom_command(TARGET tinyEngine POST_BUILD
     COMMENT "Sync res/ next to tinyEngine executable"
 )
 
-# Copy the bundled RenderDoc DLL next to tinyEngine.dll so the engine can
-# LoadLibrary it for in-app frame capture (independent of launching from the
-# RenderDoc UI). Skipped silently if the DLL is not present in thirdParty.
-if(EXISTS "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc/renderdoc.dll")
+# RenderDoc capture layer deployment.
+#  * TE_BUILD_RENDERDOC=ON  : build the core from the submodule and deploy it.
+#  * OFF (default)          : deploy a prebuilt renderdoc.dll from thirdParty/
+#                             renderdoc/ if one happens to be there; otherwise the
+#                             engine just uses a system-installed RenderDoc.
+# The deployed copy acts as a fallback layer, selected only when no system
+# RenderDoc is registered (see TinyEngineDebug.cpp) — this avoids the dual-DLL
+# situation where TriggerCapture flips a flag in one instance while the layer
+# hooks run in another.
+if(TE_BUILD_RENDERDOC)
+    include(${CMAKE_SOURCE_DIR}/cmake/BuildRenderDoc.cmake)
+    te_build_renderdoc()
+elseif(EXISTS "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc/renderdoc.dll")
     add_custom_command(TARGET tinyEngine POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc/renderdoc.dll"
             "$<TARGET_FILE_DIR:tinyEngine>/renderdoc.dll"
-        COMMENT "Copy renderdoc.dll next to tinyEngine.dll")
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/thirdParty/renderdoc/renderdoc.json"
+            "$<TARGET_FILE_DIR:tinyEngine>/renderdoc.json"
+        COMMENT "Deploy prebuilt RenderDoc capture layer (fallback)")
 endif()
 
 target_link_libraries(${PROJECT_NAME}

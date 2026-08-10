@@ -212,8 +212,9 @@ void Presenter::threadMain()
 
 void Presenter::threadInit()
 {
-    tinyengine::debug::initRenderDoc();
-    log(0, tinyengine::debug::getRenderDocStatus());
+    // Env var setup must precede any Vulkan call so the loader picks up
+    // RenderDoc's implicit capture layer at instance creation.
+    tinyengine::debug::preInstanceRenderDocSetup();
 
     if (!glfwInit())
         throw std::runtime_error("glfwInit failed");
@@ -237,6 +238,13 @@ void Presenter::threadInit()
     const std::string boxFragSpv = resRoot_ + "shaders/box.spv";
 
     renderer_.initCore(window_, vertSpv, fragSpv, boxVertSpv, boxFragSpv);
+
+    // Now that vkCreateInstance has run, the Vulkan loader may have loaded
+    // renderdoc.dll as an implicit layer; bind to it if so.
+    tinyengine::debug::initRenderDoc();
+    // Emit the (now-complete) RenderDoc status, which by this point includes
+    // the Vulkan layer enumeration report and any layer-enable retry outcome.
+    log(0, tinyengine::debug::getRenderDocStatus());
 
     {
         const VkExtent2D ext = renderer_.swapChain().getExtent();

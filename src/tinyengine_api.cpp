@@ -224,5 +224,11 @@ int32_t te_debug_capture_frame(void)
     const char* tmpl = tinyengine::debug::getCaptureFilePathTemplate();
     forwardLog(0, std::string("RenderDoc: capturing next frame -> ") +
                   (tmpl ? tmpl : "(default path)") + "_frameN.rdc");
+    // Bring up the replay UI so the capture can be inspected immediately. It
+    // connects back via target control and picks up the capture automatically.
+    if (tinyengine::debug::launchReplayUI())
+        forwardLog(0, "RenderDoc: replay UI launched/connected.");
+    else
+        forwardLog(1, "RenderDoc: could not launch replay UI (qrenderdoc not found?).");
     return 0;
 }
